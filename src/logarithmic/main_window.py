@@ -10,6 +10,7 @@ from PySide6.QtGui import QDropEvent
 from PySide6.QtWidgets import QButtonGroup
 from PySide6.QtWidgets import QComboBox
 from PySide6.QtWidgets import QInputDialog
+from PySide6.QtWidgets import QMenu
 from PySide6.QtWidgets import QDialog
 from PySide6.QtWidgets import QDialogButtonBox
 from PySide6.QtWidgets import QFrame
@@ -22,6 +23,8 @@ from PySide6.QtWidgets import QMainWindow
 from PySide6.QtWidgets import QMessageBox
 from PySide6.QtWidgets import QPushButton
 from PySide6.QtWidgets import QRadioButton
+from PySide6.QtWidgets import QSpinBox
+from PySide6.QtWidgets import QTabWidget
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
@@ -190,11 +193,16 @@ class MainWindow(QMainWindow):
         # Settings manager
         self._settings = Settings()
         
+        # Track main window position changes
+        self._last_main_position: tuple[int, int, int, int] | None = None
+        
         # Connect to log manager signals for auto-opening windows
         self._log_manager.log_content_available.connect(self._on_content_available_for_auto_open)
         
         self._setup_ui()
         self._restore_session()
+        self._restore_main_window_position()
+        self._load_font_sizes()
         
     def _setup_ui(self) -> None:
         """Set up the user interface."""
@@ -227,28 +235,85 @@ class MainWindow(QMainWindow):
         add_button.clicked.connect(self._on_add_log)
         control_layout.addWidget(add_button)
         
-        reset_session_button = QPushButton("Reset Session")
-        reset_session_button.setFont(self._fonts.get_ui_font(10))
-        reset_session_button.clicked.connect(self._on_reset_session)
-        control_layout.addWidget(reset_session_button)
+        new_session_button = QPushButton("New Session")
+        new_session_button.setFont(self._fonts.get_ui_font(10))
+        new_session_button.setToolTip("Clear all logs and start fresh")
+        new_session_button.clicked.connect(self._on_reset_session)
+        control_layout.addWidget(new_session_button)
         
         reset_windows_button = QPushButton("Reset Windows")
         reset_windows_button.setFont(self._fonts.get_ui_font(10))
         reset_windows_button.clicked.connect(self._on_reset_windows)
         control_layout.addWidget(reset_windows_button)
         
-        set_all_sizes_button = QPushButton("Set All Window Sizes")
-        set_all_sizes_button.setFont(self._fonts.get_ui_font(10))
+        set_all_sizes_button = QPushButton("Set Sizes")
+        set_all_sizes_button.setFont(self._fonts.get_ui_font(9))
         set_all_sizes_button.setToolTip("Resize all log viewer windows to the default size")
         set_all_sizes_button.clicked.connect(self._on_set_all_window_sizes)
         control_layout.addWidget(set_all_sizes_button)
         
         layout.addWidget(control_frame)
         
-        # Groups section
-        groups_frame = QFrame()
-        groups_frame.setFrameShape(QFrame.Shape.StyledPanel)
-        groups_layout = QVBoxLayout(groups_frame)
+        # Session management section
+        session_frame = QFrame()
+        session_frame.setFrameShape(QFrame.Shape.StyledPanel)
+        session_layout = QHBoxLayout(session_frame)
+        
+        session_label = QLabel("Session:")
+        session_label.setFont(self._fonts.get_ui_font(10, bold=True))
+        session_layout.addWidget(session_label)
+        
+        self.session_combo = QComboBox()
+        self.session_combo.setFont(self._fonts.get_ui_font(10))
+        self.session_combo.setMinimumWidth(150)
+        self.session_combo.setEditable(True)  # Allow typing new session name
+        self.session_combo.currentTextChanged.connect(self._on_session_changed)
+        session_layout.addWidget(self.session_combo)
+        
+        save_session_button = QPushButton("Save")
+        save_session_button.setFont(self._fonts.get_ui_font(9, bold=True))
+        save_session_button.setToolTip("Save current session (or enter new name to create)")
+        save_session_button.clicked.connect(self._on_save_session)
+        session_layout.addWidget(save_session_button)
+        
+        duplicate_session_button = QPushButton("Duplicate")
+        duplicate_session_button.setFont(self._fonts.get_ui_font(9))
+        duplicate_session_button.setToolTip("Duplicate current session with a new name")
+        duplicate_session_button.clicked.connect(self._on_duplicate_session)
+        session_layout.addWidget(duplicate_session_button)
+        
+        delete_session_button = QPushButton("Delete")
+        delete_session_button.setFont(self._fonts.get_ui_font(9))
+        delete_session_button.clicked.connect(self._on_delete_session)
+        session_layout.addWidget(delete_session_button)
+        
+        session_layout.addStretch()
+        layout.addWidget(session_frame)
+        
+        # Populate session combo
+        self._refresh_session_list()
+        
+        # Tabbed interface
+        self.tabs = QTabWidget()
+        self.tabs.setFont(self._fonts.get_ui_font(10))
+        
+        # === Logs Tab ===
+        logs_tab = QWidget()
+        logs_layout = QVBoxLayout(logs_tab)
+        
+        logs_label = QLabel("Tracked Logs:")
+        logs_label.setFont(self._fonts.get_ui_font(11, bold=True))
+        logs_layout.addWidget(logs_label)
+        
+        self.log_list = QListWidget()
+        self.log_list.itemDoubleClicked.connect(self._on_log_double_clicked)
+        logs_layout.addWidget(self.log_list)
+        
+        self.tabs.addTab(logs_tab, "📄 Logs")
+        
+        # === Groups Tab ===
+        groups_tab = QWidget()
+        groups_layout = QVBoxLayout(groups_tab)
         
         groups_header_layout = QHBoxLayout()
         groups_label = QLabel("Log Groups:")
@@ -264,21 +329,81 @@ class MainWindow(QMainWindow):
         groups_layout.addLayout(groups_header_layout)
         
         self.groups_list = QListWidget()
-        self.groups_list.setMaximumHeight(100)
         self.groups_list.itemDoubleClicked.connect(self._on_group_double_clicked)
         groups_layout.addWidget(self.groups_list)
         
-        layout.addWidget(groups_frame)
+        self.tabs.addTab(groups_tab, "📁 Groups")
         
-        # Tracked Logs section
-        logs_label = QLabel("Tracked Logs:")
-        logs_label.setFont(self._fonts.get_ui_font(11, bold=True))
-        layout.addWidget(logs_label)
+        # === Settings Tab ===
+        settings_tab = QWidget()
+        settings_layout = QVBoxLayout(settings_tab)
         
-        # Log list with custom item widgets
-        self.log_list = QListWidget()
-        self.log_list.itemDoubleClicked.connect(self._on_log_double_clicked)
-        layout.addWidget(self.log_list)
+        # Font Sizes section
+        font_sizes_frame = QFrame()
+        font_sizes_frame.setFrameShape(QFrame.Shape.StyledPanel)
+        font_sizes_layout = QVBoxLayout(font_sizes_frame)
+        
+        font_sizes_title = QLabel("Font Sizes")
+        font_sizes_title.setFont(self._fonts.get_ui_font(12, bold=True))
+        font_sizes_layout.addWidget(font_sizes_title)
+        
+        # Log content font size
+        log_font_layout = QHBoxLayout()
+        log_font_label = QLabel("Log Content:")
+        log_font_label.setFont(self._fonts.get_ui_font(10))
+        log_font_layout.addWidget(log_font_label)
+        log_font_layout.addStretch()
+        
+        self.log_font_size_spin = QSpinBox()
+        self.log_font_size_spin.setRange(6, 24)
+        self.log_font_size_spin.setValue(9)
+        self.log_font_size_spin.setSuffix(" pt")
+        self.log_font_size_spin.setFont(self._fonts.get_ui_font(10))
+        self.log_font_size_spin.valueChanged.connect(self._on_log_font_size_changed)
+        log_font_layout.addWidget(self.log_font_size_spin)
+        
+        font_sizes_layout.addLayout(log_font_layout)
+        
+        # UI font size
+        ui_font_layout = QHBoxLayout()
+        ui_font_label = QLabel("UI Elements:")
+        ui_font_label.setFont(self._fonts.get_ui_font(10))
+        ui_font_layout.addWidget(ui_font_label)
+        ui_font_layout.addStretch()
+        
+        self.ui_font_size_spin = QSpinBox()
+        self.ui_font_size_spin.setRange(6, 18)
+        self.ui_font_size_spin.setValue(10)
+        self.ui_font_size_spin.setSuffix(" pt")
+        self.ui_font_size_spin.setFont(self._fonts.get_ui_font(10))
+        self.ui_font_size_spin.valueChanged.connect(self._on_ui_font_size_changed)
+        ui_font_layout.addWidget(self.ui_font_size_spin)
+        
+        font_sizes_layout.addLayout(ui_font_layout)
+        
+        # Status bar font size
+        status_font_layout = QHBoxLayout()
+        status_font_label = QLabel("Status Bar:")
+        status_font_label.setFont(self._fonts.get_ui_font(10))
+        status_font_layout.addWidget(status_font_label)
+        status_font_layout.addStretch()
+        
+        self.status_font_size_spin = QSpinBox()
+        self.status_font_size_spin.setRange(6, 14)
+        self.status_font_size_spin.setValue(9)
+        self.status_font_size_spin.setSuffix(" pt")
+        self.status_font_size_spin.setFont(self._fonts.get_ui_font(10))
+        self.status_font_size_spin.valueChanged.connect(self._on_status_font_size_changed)
+        status_font_layout.addWidget(self.status_font_size_spin)
+        
+        font_sizes_layout.addLayout(status_font_layout)
+        
+        settings_layout.addWidget(font_sizes_frame)
+        settings_layout.addStretch()
+        
+        self.tabs.addTab(settings_tab, "⚙️ Settings")
+        
+        layout.addWidget(self.tabs)
         
     def _add_log_to_list(self, path_key: str, is_wildcard: bool = False) -> None:
         """Add a log file to the list with custom widget.
@@ -658,6 +783,12 @@ class MainWindow(QMainWindow):
             default_width, default_height = self._settings.get_default_window_size()
             group_window.resize(default_width, default_height)
         
+        # Apply font sizes
+        font_sizes = self._settings.get_font_sizes()
+        group_window.set_log_font_size(font_sizes.get("log_content", 9))
+        group_window.set_ui_font_size(font_sizes.get("ui_elements", 10))
+        group_window.set_status_font_size(font_sizes.get("status_bar", 9))
+        
         # Add all logs assigned to this group
         for path, group in self._log_groups.items():
             if group == group_name:
@@ -872,6 +1003,12 @@ class MainWindow(QMainWindow):
         if not restore_position:
             default_width, default_height = self._settings.get_default_window_size()
             viewer.resize(default_width, default_height)
+        
+        # Apply font sizes
+        font_sizes = self._settings.get_font_sizes()
+        viewer.set_log_font_size(font_sizes.get("log_content", 9))
+        viewer.set_ui_font_size(font_sizes.get("ui_elements", 10))
+        viewer.set_status_font_size(font_sizes.get("status_bar", 9))
         
         # Subscribe to log manager
         logger.info(f"Subscribing viewer to log manager for: {path_key}")
@@ -1095,15 +1232,40 @@ class MainWindow(QMainWindow):
             logger.info(f"Will auto-open window for: {path_str}")
     
     def _on_reset_session(self) -> None:
-        """Handle reset session button click."""
+        """Handle new session button click - clears everything and starts fresh."""
+        reply = QMessageBox.question(
+            self,
+            "New Session",
+            "Clear all logs and start a fresh session?\nCurrent session will be saved.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        
+        logger.info("Creating new session")
+        
+        # Unsubscribe all viewers from log manager BEFORE closing
+        for path_key, viewer in list(self._viewer_windows.items()):
+            self._log_manager.unsubscribe(path_key, viewer)
+        
+        # Unsubscribe all group windows from log manager
+        for group_name, group_window in list(self._group_windows.items()):
+            for path_key in list(self._log_groups.keys()):
+                if self._log_groups.get(path_key) == group_name:
+                    self._log_manager.unsubscribe(path_key, group_window)
+        
         # Stop all watchers
         for watcher in self._watchers.values():
             watcher.stop()
-            watcher.wait()
             
         # Close all viewer windows
         for viewer in list(self._viewer_windows.values()):
             viewer.close()
+        
+        # Close all group windows
+        for group_window in list(self._group_windows.values()):
+            group_window.close()
             
         # Unregister all logs from log manager
         for path_key in list(self._watchers.keys()):
@@ -1112,11 +1274,21 @@ class MainWindow(QMainWindow):
         # Clear data structures
         self._watchers.clear()
         self._viewer_windows.clear()
+        self._group_windows.clear()
+        self._log_groups.clear()
+        self._available_groups.clear()
         self.log_list.clear()
+        self.groups_list.clear()
         
         # Clear settings
         self._settings.clear_tracked_logs()
-        logger.info("Session reset")
+        
+        # Clear session combo box (set to empty for new unnamed session)
+        self.session_combo.blockSignals(True)
+        self.session_combo.setCurrentText("")
+        self.session_combo.blockSignals(False)
+        
+        logger.info("New session created")
         
     def _on_set_all_window_sizes(self) -> None:
         """Set all log viewer and group windows to the default size."""
@@ -1276,6 +1448,40 @@ class MainWindow(QMainWindow):
                 f"Failed to add log file:\n{e}",
             )
     
+    def moveEvent(self, event) -> None:
+        """Handle main window move event."""
+        super().moveEvent(event)
+        self._save_main_window_position()
+    
+    def resizeEvent(self, event) -> None:
+        """Handle main window resize event."""
+        super().resizeEvent(event)
+        self._save_main_window_position()
+    
+    def _save_main_window_position(self) -> None:
+        """Save main window position if changed."""
+        pos = self.pos()
+        size = self.size()
+        current = (pos.x(), pos.y(), size.width(), size.height())
+        
+        if self._last_main_position is None:
+            self._settings.set_main_window_position(*current)
+            self._last_main_position = current
+        else:
+            old_x, old_y, old_w, old_h = self._last_main_position
+            if (abs(current[0] - old_x) > 5 or abs(current[1] - old_y) > 5 or
+                current[2] != old_w or current[3] != old_h):
+                self._settings.set_main_window_position(*current)
+                self._last_main_position = current
+    
+    def _restore_main_window_position(self) -> None:
+        """Restore main window position from settings."""
+        pos = self._settings.get_main_window_position()
+        if pos:
+            self.move(pos["x"], pos["y"])
+            self.resize(pos["width"], pos["height"])
+            logger.info(f"Restored main window position: ({pos['x']}, {pos['y']}) {pos['width']}x{pos['height']}")
+    
     def closeEvent(self, event) -> None:
         """Handle window close event.
         
@@ -1295,3 +1501,256 @@ class MainWindow(QMainWindow):
             group_window.close()
             
         event.accept()
+    
+    # Session Management
+    
+    def _refresh_session_list(self) -> None:
+        """Refresh the session combo box."""
+        self.session_combo.blockSignals(True)  # Prevent triggering change event
+        self.session_combo.clear()
+        
+        sessions = self._settings.get_available_sessions()
+        self.session_combo.addItems(sessions)
+        
+        # Set current session
+        current = self._settings.get_current_session()
+        index = self.session_combo.findText(current)
+        if index >= 0:
+            self.session_combo.setCurrentIndex(index)
+        
+        self.session_combo.blockSignals(False)
+    
+    def _on_session_changed(self, session_name: str) -> None:
+        """Handle session selection change.
+        
+        Args:
+            session_name: Name of the selected session
+        """
+        if not session_name or session_name == self._settings.get_current_session():
+            return
+        
+        # Confirm switch
+        reply = QMessageBox.question(
+            self,
+            "Switch Session",
+            f"Switch to session '{session_name}'?\nCurrent session will be saved and all windows will be closed.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            self._switch_to_session(session_name)
+        else:
+            # Revert combo box
+            self._refresh_session_list()
+    
+    def _switch_to_session(self, session_name: str) -> None:
+        """Switch to a different session.
+        
+        Args:
+            session_name: Name of the session to switch to
+        """
+        logger.info(f"Switching to session: {session_name}")
+        
+        # Unsubscribe all viewers from log manager BEFORE closing
+        for path_key, viewer in list(self._viewer_windows.items()):
+            self._log_manager.unsubscribe(path_key, viewer)
+        
+        # Unsubscribe all group windows from log manager
+        for group_name, group_window in list(self._group_windows.items()):
+            for path_key in list(self._log_groups.keys()):
+                if self._log_groups.get(path_key) == group_name:
+                    self._log_manager.unsubscribe(path_key, group_window)
+        
+        # Stop all watchers
+        for watcher in list(self._watchers.values()):
+            watcher.stop()
+        
+        # Close all windows
+        for viewer in list(self._viewer_windows.values()):
+            viewer.close()
+        for group_window in list(self._group_windows.values()):
+            group_window.close()
+        
+        # Clear data structures
+        self._watchers.clear()
+        self._viewer_windows.clear()
+        self._group_windows.clear()
+        self._log_groups.clear()
+        self._available_groups.clear()
+        self.log_list.clear()
+        self.groups_list.clear()
+        
+        # Switch session in settings
+        self._settings.switch_session(session_name)
+        
+        # Restore new session
+        self._restore_session()
+        
+        logger.info(f"Switched to session: {session_name}")
+    
+    def _on_save_session(self) -> None:
+        """Handle Save button click - saves current session."""
+        session_name = self.session_combo.currentText().strip()
+        
+        if not session_name:
+            # Empty name - ask for new session name
+            session_name, ok = QInputDialog.getText(
+                self,
+                "Save New Session",
+                "Enter session name:",
+                QLineEdit.EchoMode.Normal
+            )
+            
+            if not ok or not session_name.strip():
+                return
+            
+            session_name = session_name.strip()
+        
+        # Check if we're creating a new session or saving existing
+        existing_sessions = self._settings.get_available_sessions()
+        current_session = self._settings.get_current_session()
+        
+        if session_name != current_session and session_name in existing_sessions:
+            # Trying to save with a different existing session name
+            reply = QMessageBox.question(
+                self,
+                "Overwrite Session",
+                f"Session '{session_name}' already exists.\nOverwrite it?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+        
+        # Save the session
+        if session_name == current_session:
+            # Just save current session
+            self._settings._save()
+            logger.info(f"Saved session: {session_name}")
+        else:
+            # Save as new session and switch to it
+            self._settings.save_session_as(session_name)
+            self._settings.switch_session(session_name)
+            logger.info(f"Saved and switched to session: {session_name}")
+        
+        self._refresh_session_list()
+        QMessageBox.information(self, "Session Saved", f"Session '{session_name}' saved")
+    
+    def _on_duplicate_session(self) -> None:
+        """Handle Duplicate button click - duplicates current session with new name."""
+        current_session = self._settings.get_current_session()
+        
+        session_name, ok = QInputDialog.getText(
+            self,
+            "Duplicate Session",
+            f"Enter name for duplicate of '{current_session}':",
+            QLineEdit.EchoMode.Normal,
+            f"{current_session}-copy"
+        )
+        
+        if not ok or not session_name.strip():
+            return
+        
+        session_name = session_name.strip()
+        
+        # Check if session exists
+        if session_name in self._settings.get_available_sessions():
+            reply = QMessageBox.question(
+                self,
+                "Overwrite Session",
+                f"Session '{session_name}' already exists.\nOverwrite it?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+        
+        self._settings.save_session_as(session_name)
+        self._refresh_session_list()
+        QMessageBox.information(self, "Session Duplicated", f"Session duplicated as '{session_name}'")
+        logger.info(f"Duplicated session as: {session_name}")
+    
+    def _on_delete_session(self) -> None:
+        """Handle Delete Session button click."""
+        current_session = self.session_combo.currentText()
+        
+        if current_session == self._settings.get_current_session():
+            QMessageBox.warning(
+                self,
+                "Cannot Delete",
+                "Cannot delete the current session.\nSwitch to another session first."
+            )
+            return
+        
+        reply = QMessageBox.question(
+            self,
+            "Delete Session",
+            f"Delete session '{current_session}'?\nThis cannot be undone.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            if self._settings.delete_session(current_session):
+                self._refresh_session_list()
+                QMessageBox.information(self, "Session Deleted", f"Session '{current_session}' deleted")
+                logger.info(f"Deleted session: {current_session}")
+            else:
+                QMessageBox.warning(self, "Delete Failed", f"Could not delete session '{current_session}'")
+    
+    # Font Size Management
+    
+    def _load_font_sizes(self) -> None:
+        """Load font sizes from settings and apply to UI."""
+        font_sizes = self._settings.get_font_sizes()
+        
+        # Update spin boxes (block signals to prevent triggering save)
+        self.log_font_size_spin.blockSignals(True)
+        self.ui_font_size_spin.blockSignals(True)
+        self.status_font_size_spin.blockSignals(True)
+        
+        self.log_font_size_spin.setValue(font_sizes.get("log_content", 9))
+        self.ui_font_size_spin.setValue(font_sizes.get("ui_elements", 10))
+        self.status_font_size_spin.setValue(font_sizes.get("status_bar", 9))
+        
+        self.log_font_size_spin.blockSignals(False)
+        self.ui_font_size_spin.blockSignals(False)
+        self.status_font_size_spin.blockSignals(False)
+        
+        logger.info(f"Loaded font sizes: {font_sizes}")
+    
+    def _on_log_font_size_changed(self, size: int) -> None:
+        """Handle log content font size change."""
+        self._settings.set_font_size("log_content", size)
+        logger.info(f"Log content font size changed to {size}")
+        
+        # Update all open log viewer windows
+        for viewer in self._viewer_windows.values():
+            viewer.set_log_font_size(size)
+        
+        # Update all group windows
+        for group_window in self._group_windows.values():
+            group_window.set_log_font_size(size)
+    
+    def _on_ui_font_size_changed(self, size: int) -> None:
+        """Handle UI elements font size change."""
+        self._settings.set_font_size("ui_elements", size)
+        logger.info(f"UI elements font size changed to {size}")
+        
+        # Update all open log viewer windows
+        for viewer in self._viewer_windows.values():
+            viewer.set_ui_font_size(size)
+        
+        # Update all group windows
+        for group_window in self._group_windows.values():
+            group_window.set_ui_font_size(size)
+    
+    def _on_status_font_size_changed(self, size: int) -> None:
+        """Handle status bar font size change."""
+        self._settings.set_font_size("status_bar", size)
+        logger.info(f"Status bar font size changed to {size}")
+        
+        # Update all open log viewer windows
+        for viewer in self._viewer_windows.values():
+            viewer.set_status_font_size(size)
+        
+        # Update all group windows
+        for group_window in self._group_windows.values():
+            group_window.set_status_font_size(size)

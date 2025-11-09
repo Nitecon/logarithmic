@@ -237,6 +237,7 @@ class LogGroupWindow(QWidget):
             'text_edit': text_edit,
             'status_bar': status_bar,
             'pause_btn': pause_btn,
+            'clear_btn': clear_btn,
             'go_live_btn': go_live_btn,
             'is_live': True,
             'is_paused': False
@@ -358,6 +359,7 @@ class LogGroupWindow(QWidget):
         self._combined_controls = {
             'go_live_btn': go_live_btn,
             'pause_btn': pause_btn,
+            'clear_btn': clear_btn,
             'status_bar': status_bar,
             'is_live': True,
             'is_paused': False
@@ -366,6 +368,7 @@ class LogGroupWindow(QWidget):
         self.tab_widget.addTab(combined_container, "Combined View")
         
         self._update_combined_status()
+
         logger.info(f"Switched group {self.group_name} to combined mode")
         self._update_status()
     
@@ -795,3 +798,61 @@ class LogGroupWindow(QWidget):
                     current[2] != old_w or current[3] != old_h):
                     self._position_changed_callback(*current)
                     self._last_saved_position = current
+    
+    def set_log_font_size(self, size: int) -> None:
+        """Set log content font size for all tabs.
+        
+        Args:
+            size: Font size in points
+        """
+        font = self._fonts.get_mono_font(size)
+        
+        # Update tabbed mode widgets
+        for widgets in self._tab_widgets.values():
+            if 'text_edit' in widgets:
+                widgets['text_edit'].setFont(font)
+        
+        # Update combined mode widget
+        if self._combined_widget:
+            self._combined_widget.setFont(font)
+    
+    def set_ui_font_size(self, size: int) -> None:
+        """Set UI elements font size for all tabs.
+        
+        Args:
+            size: Font size in points
+        """
+        font = self._fonts.get_ui_font(size)
+        font_bold = self._fonts.get_ui_font(size, bold=True)
+        
+        # Update tabbed mode widgets
+        for widgets in self._tab_widgets.values():
+            if 'pause_btn' in widgets:
+                widgets['pause_btn'].setFont(font)
+            if 'clear_btn' in widgets:
+                widgets['clear_btn'].setFont(font)
+            if 'go_live_btn' in widgets:
+                widgets['go_live_btn'].setFont(font_bold)
+        
+        # Update combined mode controls
+        if self._combined_controls:
+            self._combined_controls['pause_btn'].setFont(font)
+            self._combined_controls['clear_btn'].setFont(font)
+            self._combined_controls['go_live_btn'].setFont(font_bold)
+    
+    def set_status_font_size(self, size: int) -> None:
+        """Set status bar font size for all tabs.
+        
+        Args:
+            size: Font size in points
+        """
+        font = self._fonts.get_ui_font(size)
+        
+        # Update tabbed mode widgets
+        for widgets in self._tab_widgets.values():
+            if 'status_bar' in widgets:
+                widgets['status_bar'].setFont(font)
+        
+        # Update combined mode status bar
+        if self._combined_controls:
+            self._combined_controls['status_bar'].setFont(font)

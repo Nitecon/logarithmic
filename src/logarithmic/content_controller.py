@@ -293,3 +293,39 @@ class ContentController:
         
         status_text = "  |  ".join(parts)
         self._status_bar.setText(status_text)
+    
+    def set_log_font_size(self, size: int) -> None:
+        """Set log content font size.
+        
+        Args:
+            size: Font size in points
+        """
+        if self._text_edit:
+            font = self._fonts.get_mono_font(size)
+            self._text_edit.setFont(font)
+    
+    def set_ui_font_size(self, size: int) -> None:
+        """Set UI elements font size.
+        
+        Args:
+            size: Font size in points
+        """
+        if self._pause_btn:
+            font = self._fonts.get_ui_font(size)
+            self._pause_btn.setFont(font)
+        if self._clear_btn:
+            font = self._fonts.get_ui_font(size)
+            self._clear_btn.setFont(font)
+        if self._go_live_btn:
+            font = self._fonts.get_ui_font(size, bold=True)
+            self._go_live_btn.setFont(font)
+    
+    def set_status_font_size(self, size: int) -> None:
+        """Set status bar font size.
+        
+        Args:
+            size: Font size in points
+        """
+        if self._status_bar:
+            font = self._fonts.get_ui_font(size)
+            self._status_bar.setFont(font)

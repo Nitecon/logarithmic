@@ -360,3 +360,27 @@ class LogViewerWindow(QWidget):
         QTimer.singleShot(500, lambda: self.setWindowTitle(original_title))
         
         logger.info(f"Flashed window for {self._path_str}")
+    
+    def set_log_font_size(self, size: int) -> None:
+        """Set log content font size.
+        
+        Args:
+            size: Font size in points
+        """
+        self._content_controller.set_log_font_size(size)
+    
+    def set_ui_font_size(self, size: int) -> None:
+        """Set UI elements font size.
+        
+        Args:
+            size: Font size in points
+        """
+        self._content_controller.set_ui_font_size(size)
+    
+    def set_status_font_size(self, size: int) -> None:
+        """Set status bar font size.
+        
+        Args:
+            size: Font size in points
+        """
+        self._content_controller.set_status_font_size(size)

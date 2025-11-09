@@ -17,14 +17,46 @@ class Settings:
     def __init__(self) -> None:
         """Initialize settings manager."""
         self.settings_dir = Path.home() / ".logarithmic"
-        self.settings_file = self.settings_dir / "settings.json"
+        self.sessions_dir = self.settings_dir / "sessions"
+        self.app_settings_file = self.settings_dir / "app_settings.json"
+        self._current_session = "default"
         self._data: dict[str, Any] = {}
+        self._ensure_directories()
+        self._load_last_session()
         self._load()
+    
+    def _ensure_directories(self) -> None:
+        """Ensure settings directories exist."""
+        self.settings_dir.mkdir(parents=True, exist_ok=True)
+        self.sessions_dir.mkdir(parents=True, exist_ok=True)
+    
+    def _load_last_session(self) -> None:
+        """Load the last used session name."""
+        if self.app_settings_file.exists():
+            try:
+                with open(self.app_settings_file, "r", encoding="utf-8") as f:
+                    app_settings = json.load(f)
+                    self._current_session = app_settings.get("last_session", "default")
+                    logger.info(f"Loading last session: {self._current_session}")
+            except Exception as e:
+                logger.error(f"Failed to load app settings: {e}")
+                self._current_session = "default"
+    
+    def _save_last_session(self) -> None:
+        """Save the current session as the last used."""
+        try:
+            app_settings = {"last_session": self._current_session}
+            with open(self.app_settings_file, "w", encoding="utf-8") as f:
+                json.dump(app_settings, f, indent=2)
+        except Exception as e:
+            logger.error(f"Failed to save app settings: {e}")
 
     def _load(self) -> None:
-        """Load settings from disk."""
-        if not self.settings_file.exists():
-            logger.info("No settings file found, using defaults")
+        """Load settings from disk (loads current session)."""
+        session_file = self.sessions_dir / f"{self._current_session}.json"
+        
+        if not session_file.exists():
+            logger.info(f"No session file found for '{self._current_session}', using defaults")
             self._data = {
                 "tracked_logs": [],
                 "open_windows": [],
@@ -32,14 +64,20 @@ class Settings:
                 "default_window_width": 1000,
                 "default_window_height": 800,  # ~40 lines with controls
                 "groups": [],  # List of group names
-                "log_groups": {}  # path_key -> group_name mapping
+                "log_groups": {},  # path_key -> group_name mapping
+                "main_window_position": None,  # Main window position/size
+                "font_sizes": {  # Font size settings
+                    "log_content": 9,
+                    "ui_elements": 10,
+                    "status_bar": 9
+                }
             }
             return
 
         try:
-            with open(self.settings_file, "r", encoding="utf-8") as f:
+            with open(session_file, "r", encoding="utf-8") as f:
                 self._data = json.load(f)
-            logger.info(f"Loaded settings from: {self.settings_file}")
+            logger.info(f"Loaded session '{self._current_session}' from: {session_file}")
             
             # Ensure all keys exist
             if "open_windows" not in self._data:
@@ -58,26 +96,22 @@ class Settings:
         except Exception as e:
             logger.error(f"Failed to load settings: {e}")
             self._data = {
-                "tracked_logs": [],
                 "open_windows": [],
                 "window_positions": {}
             }
 
     def _save(self) -> None:
-        """Save settings to disk."""
+        """Save settings to disk (saves to current session)."""
+        session_file = self.sessions_dir / f"{self._current_session}.json"
+        
         try:
-            # Create directory if it doesn't exist
-            self.settings_dir.mkdir(parents=True, exist_ok=True)
-
-            with open(self.settings_file, "w", encoding="utf-8") as f:
+            with open(session_file, "w", encoding="utf-8") as f:
                 json.dump(self._data, f, indent=2)
-            logger.info(f"Saved settings to: {self.settings_file}")
         except Exception as e:
-            logger.error(f"Failed to save settings: {e}")
+            logger.error(f"Failed to save session '{self._current_session}': {e}")
 
     def get_tracked_logs(self) -> list[str]:
         """Get list of tracked log file paths.
-        
         Returns:
             List of file paths as strings
         """
@@ -220,4 +254,122 @@ class Settings:
             log_groups: Dictionary mapping path_key to group_name
         """
         self._data["log_groups"] = log_groups
+        self._save()
+    
+    # Session Management
+    
+    def get_current_session(self) -> str:
+        """Get the name of the current session.
+        
+        Returns:
+            Current session name
+        """
+        return self._current_session
+    
+    def get_available_sessions(self) -> list[str]:
+        """Get list of available session names.
+        
+        Returns:
+            List of session names
+        """
+        if not self.sessions_dir.exists():
+            return ["default"]
+        
+        sessions = []
+        for file in self.sessions_dir.glob("*.json"):
+            sessions.append(file.stem)
+        
+        return sorted(sessions) if sessions else ["default"]
+    
+    def switch_session(self, session_name: str) -> None:
+        """Switch to a different session.
+        
+        Args:
+            session_name: Name of the session to switch to
+        """
+        logger.info(f"Switching from session '{self._current_session}' to '{session_name}'")
+        self._current_session = session_name
+        self._save_last_session()
+        self._load()
+    
+    def save_session_as(self, session_name: str) -> None:
+        """Save current settings as a new session.
+        
+        Args:
+            session_name: Name for the new session
+        """
+        old_session = self._current_session
+        self._current_session = session_name
+        self._save()
+        logger.info(f"Saved session as '{session_name}'")
+        self._current_session = old_session  # Restore current session
+    
+    def delete_session(self, session_name: str) -> bool:
+        """Delete a session.
+        
+        Args:
+            session_name: Name of the session to delete
+            
+        Returns:
+            True if deleted, False if it was the current session or doesn't exist
+        """
+        if session_name == self._current_session:
+            logger.warning(f"Cannot delete current session '{session_name}'")
+            return False
+        
+        session_file = self.sessions_dir / f"{session_name}.json"
+        if session_file.exists():
+            session_file.unlink()
+            logger.info(f"Deleted session '{session_name}'")
+            return True
+        
+        return False
+    
+    def get_main_window_position(self) -> dict | None:
+        """Get main window position and size.
+        
+        Returns:
+            Dictionary with x, y, width, height or None
+        """
+        return self._data.get("main_window_position")
+    
+    def set_main_window_position(self, x: int, y: int, width: int, height: int) -> None:
+        """Set main window position and size.
+        
+        Args:
+            x: X coordinate
+            y: Y coordinate
+            width: Window width
+            height: Window height
+        """
+        self._data["main_window_position"] = {
+            "x": x,
+            "y": y,
+            "width": width,
+            "height": height
+        }
+        self._save()
+    
+    def get_font_sizes(self) -> dict:
+        """Get font size settings.
+        
+        Returns:
+            Dictionary with font sizes for different elements
+        """
+        return self._data.get("font_sizes", {
+            "log_content": 9,
+            "ui_elements": 10,
+            "status_bar": 9
+        })
+    
+    def set_font_size(self, element: str, size: int) -> None:
+        """Set font size for a specific element.
+        
+        Args:
+            element: Element name (log_content, ui_elements, status_bar)
+            size: Font size in points
+        """
+        if "font_sizes" not in self._data:
+            self._data["font_sizes"] = {}
+        self._data["font_sizes"][element] = size
         self._save()
