@@ -1,0 +1,64 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "logarithmic"
+version = "0.1.0"
+description = "Cross-platform log file watcher with multi-window GUI"
+requires-python = ">=3.11"
+dependencies = [
+    "PySide6>=6.10.0",
+    "watchdog>=5.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "pytest-mock>=3.0",
+    "pytest-qt>=4.0",
+    "mypy>=1.0",
+    "ruff>=0.1.0",
+    "bandit>=1.7",
+    "pip-audit>=2.0",
+    "pip-tools>=7.0",
+    "pyinstaller>=6.0",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "C",  # flake8-comprehensions
+    "B",  # flake8-bugbear
+]
+ignore = []
+
+[tool.ruff.lint.isort]
+force-single-line = true
+known-first-party = ["logarithmic"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_ignores = true
+strict_optional = true
+check_untyped_defs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q --cov=src/logarithmic --cov-report=term-missing"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+omit = [
+    "src/logarithmic/__main__.py",
+]

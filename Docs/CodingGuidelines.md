@@ -1,211 +1,286 @@
-[← Back to README](../README.md)
+# General Python Project - Coding Guidelines
 
-# Rust Coding Guidelines
+## 1. Introduction
 
-- **ID:** `RUST-GUIDE-001`
-- **Status:** `Active`
-- **Version:** `1.0.0`
+This document provides a set of general coding standards and best practices for Python projects. The goal is to maintain code quality, consistency, and maintainability across all services and applications.
 
-## 1. Overview
+> **Project-Specific Documentation**
+>
+> This document is for **general** Python standards. All project-specific information, such as:
+>
+> * Detailed architecture (e.g., specific microservices, data flow)
+> * Domain logic and business rules
+> * Environment setup (e.g., specific `.env` keys)
+> * Deployment procedures
+>
+> ...must be documented in a separate file, such as `docs/README.md` or `docs/architecture.md`.
 
-These guidelines are the single source of truth for all Rust code in this repository. They are based on community best practices, prioritizing consistency, simplicity, and maintainability. All contributions must adhere to these rules.
+---
 
-## 2. Core Principles
+## 2. Table of Contents
 
-1.  **Consistency:** Code should look as if written by a single person.
-2.  **Simplicity (KIS):** Prefer clear, idiomatic Rust over "clever" solutions.
-3.  **Enforceability:** Guidelines are enforced by automated tooling.
+1.  [Introduction](#1-introduction)
+2.  [Table of Contents](#2-table-of-contents)
+3.  [General Quick Guidelines](#3-general-quick-guidelines)
+4.  [Project Structure](#4-project-structure)
+5.  [Code Organization](#5-code-organization)
+6.  [Dependency Management](#6-dependency-management)
+7.  [Configuration Management](#7-configuration-management)
+8.  [Error Handling & Exceptions](#8-error-handling--exceptions)
+9.  [Logging Standards](#9-logging-standards)
+10. [Testing Guidelines](#10-testing-guidelines)
+11. [Documentation](#11-documentation)
+12. [CI/CD](#12-cicd)
+13. [Security](#13-security)
+14. [Appendix: Tool Configuration](#14-appendix-tool-configuration)
 
-## 3. Tooling & Environment
+---
 
-### 3.1. Toolchain
+## 3. General Quick Guidelines
 
--   **Rustup:** All developers must use `rustup` to manage their toolchains.
--   **Edition:** This project targets the **Rust 2024 Edition**.
--   **Channels:** Use the `stable` channel.
+* **Project Structure**: Follow the standard `src/` layout. (See [Project Structure](#4-project-structure)).
+* **Dependencies**: Define abstract dependencies in `pyproject.toml`. Use `pip-compile` to generate a `requirements.txt` lockfile. (See [Dependency Management](#6-dependency-management)).
+* **Virtual Environments**: All development must be done within a Python virtual environment (`venv`).
+* **Configuration**: Use `pydantic-settings` to load configuration from environment variables. Do not read `os.environ` directly in application code.
+* **Logging**: Use Python's built-in `logging` module. Get loggers with `logging.getLogger(__name__)`.
+* **Data Models**: Use `pydantic` models for all data structures, API payloads, and message formats. This provides runtime validation.
+* **Testing**: Use `pytest` for all tests. Use `pytest-mock` for mocking and `pytest.mark.parametrize` for table-driven tests.
+* **Formatting**: Use `black` for code formatting and `ruff` for linting and import sorting. This is non-negotiable and enforced by CI.
+* **Type Hinting**: All new code **must** include type hints for function arguments and return values.
+* **Type Checking**: All code **must** pass static type checking with `mypy`. This is enforced by CI.
 
-### 3.2. Formatting
+---
 
-Formatting is non-negotiable and is enforced by CI.
--   **Tool:** `rustfmt`
--   **Configuration:** We use the **default `rustfmt` settings**. No `rustfmt.toml` file is required.
--   **Command:** Run `cargo fmt` before every commit.
+## 4. Project Structure
 
-### 3.3. Linting
+A standard `src`-based layout is preferred as it prevents common import issues. The `tests` directory should mirror the `src` directory's structure.
 
-Linting helps catch common bugs and un-idiomatic code.
--   **Tool:** `clippy`
--   **Configuration:** We use a strict set of lints based on `clippy::pedantic`. Exceptions are managed in the root `clippy.toml` file.
--   **Command:** Run `cargo clippy -- -D warnings` before opening a pull request. CI will enforce this.
-
-Ensure that if it doesn't exist that you create a `clippy.toml` in the root of the repository with the following content that can be adjusted as needed:
-```toml
-# This file configures 'clippy', Rust's linter.
-# The CI command `cargo clippy -- -D warnings -D clippy::pedantic`
-# enables all warnings and pedantic lints as errors.
-#
-# This file lists the lints we explicitly 'allow' (disable)
-# from that very strict set.
-
-[lints]
-
-# 'pedantic' lints we've agreed to allow:
-
-# Allow implicit returns (e.g., `x + 1` instead of `return x + 1;`)
-# This is highly idiomatic Rust.
-clippy::implicit_return = "allow"
-
-# Allows structs/enums that are small in bytes. Pedantic suggests boxing.
-clippy::large_enum_variant = "allow"
-
-# Allows modules with names that partially match parent module names.
-clippy::module_name_repetitions = "allow"
-
-# Allows `if/else` with a single `if`. Pedantic wants `if` only.
-clippy::single_match_else = "allow"
-
-# 'restriction' lints (often part of pedantic) we allow:
-
-# Allow indexing (`my_vec[0]`). Pedantic prefers `.get()`.
-# This is fine in code where logic guarantees bounds, and avoids
-# unnecessary `.unwrap()` or error handling.
-clippy::indexing_slicing = "allow"
-
-# Allow integer/float arithmetic that *could* panic/wrap.
-# This is often too noisy for performance-sensitive code.
-clippy::arithmetic_side_effects = "allow"
-
-# Allow non-obvious casts (e.g., `u64` as `usize`).
-clippy::cast_possible_truncation = "allow"
-clippy::cast_possible_wrap = "allow"
-clippy::cast_sign_loss = "allow"
-```
-
-## 4. Formatting & Naming Conventions
-
-### 4.1. Formatting
-
-`cargo fmt` handles all formatting. Do not manually format code.
-
-### 4.2. Naming
-
-We follow standard Rust API guidelines:
--   **Types & Traits:** `PascalCase` (e.g., `MyStruct`, `MyTrait`).
--   **Functions & Variables:** `snake_case` (e.g., `my_function`, `my_variable`).
--   **Constants & Statics:** `SCREAMING_SNAKE_CASE` (e.g., `MAX_RETRIES`).
--   **Modules:** `snake_case` (e.g., `my_module.rs`).
-
-## 5. Code Organization & Project Structure
-
-### 5.1. Modules
-
--   **Roots:** `src/lib.rs` (for library crates) and `src/main.rs` (for binary crates) are the crate roots.
--   **Binaries:** Additional binaries are placed in `src/bin/my_binary.rs`.
--   **Module Files:** A module `my_module` declared in `lib.rs` (`mod my_module;`) should live in `src/my_module.rs`.
--   **Module Folders:** Only use `src/my_module/mod.rs` if the module is complex and contains sub-modules (e.g., `src/my_module/utils.rs`). Prefer the flat `src/my_module.rs` file structure.
-
-### 5.2. Visibility
-
--   **`pub`:** Use for items that are part of the *public API* of a library.
--   **`pub(crate)`:** Use for items that need to be accessed from other modules *within the same crate* but are not part of the public API. This is the preferred default for internal crate-wide helpers.
--   **Private (default):** Use for items that are only used within their own module.
-
-## 6. Idiomatic Rust & Best Practices
-
-### 6.1. Error Handling
-
-This is the most critical part of robust Rust code.
--   **Use `Result<T, E>`:** All fallible functions *must* return a `Result`.
--   **No `.unwrap()` or `.expect()`:** These calls are **strictly forbidden** in all production code paths. They are permitted *only* in tests, examples, or at the very top of `main.rs` if a failure is unrecoverable on startup.
--   **Library Error Types:** When writing library code (e.g., in `src/lib.rs` or its modules), define custom error enums using the `thiserror` crate. This provides structured, meaningful errors to consumers.
--   **Application Error Handling:** In application logic (e.g., `src/main.rs`, `src/bin/`), use the `anyhow` crate to easily propagate and add context to errors. `anyhow::Result<T>` is a drop-in replacement for `Result<T, E>` that simplifies handling diverse error types.
-
-### 6.2. Pattern Matching
-
--   Prefer `match`, `if let`, and `while let` over complex, nested `if/else` statements for checking `enum` variants or `Option` values.
-
-### 6.3. Ownership & Borrowing
-
--   **Prefer Borrows:** Always pass a borrow (`&T` or `&mut T`) to a function unless the function *must* take ownership of the value.
-    -   *Analogy:* Think of this as the compiler enforcing you to pass a pointer (a borrow) instead of making a copy (a `clone`), unless you explicitly ask for the copy.
--   **Avoid `.clone()`:** A `.clone()` indicates a new heap allocation and copy. While necessary at times (especially for `Arc`), treat it as a "red flag" to review. Can you use a borrow instead?
-
-### 6.4. Collections
-
--   **`Vec<T>`:** The default dynamic array. (Like Go's `slice` or C++'s `std::vector`).
--   **`HashMap<K, V>`:** The default hash map. (Like Go's `map` or C++'s `std::unordered_map`).
--   **`&str` vs. `String`:**
-    -   Use `&str` (a string slice) for function parameters that only need to *read* string data. It's the equivalent of Go's `string` or C++'s `std::string_view`.
-    -   Use `String` (an owned, heap-allocated string) for struct fields or functions that need to *build or own* string data. It's the equivalent of C++'s `std::string` or what a Go `strings.Builder` produces.
-
-## 7. Unsafe Code
-
--   **Forbidden by Default:** The use of `unsafe` blocks is forbidden.
--   **Justification Required:** Any exception *must* be approved by the project owner and accompanied by a mandatory `// SAFETY:` comment block.
-    ```rust
-    // SAFETY:
-    // 1. Explain why this code is necessary (e.g., FFI).
-    // 2. Document the invariants that *must* be upheld for this
-    //    block to be sound.
-    unsafe {
-        // ... unsafe operations ...
-    }
-    ```
-
-## 8. Concurrency
-
--   **`async/await`:** Use for I/O-bound concurrency (e.g., network requests, file I/O) with a runtime like `tokio`.
--   **`std::thread`:** Use for CPU-bound tasks (e.g., parallel computation).
--   **Shared State:**
-    -   **`Arc<T>`:** (Atomic Reference Counted) Use to share *immutable* ownership of a value across multiple threads. (Like C++'s `std::shared_ptr`).
-    -   **`Mutex<T>` / `RwLock<T>`:** Use for *interior mutability* of shared state.
-    -   *Analogy:* Unlike Go's `sync.Mutex` which is separate from the data, Rust's `Mutex<T>` *owns* the data `T`. You cannot access the data without first acquiring the lock, which the compiler enforces.
+project-name/ ├── .github/ # CI/CD workflows (GitHub Actions) ├── .gitignore ├── .pre-commit-config.yaml # pre-commit hooks (see CI/CD) ├── README.md # Project overview, setup, and usage ├── LICENSE ├── pyproject.toml # Project metadata, dependencies, and tool config ├── requirements.in # Abstract dependencies for pip-compile ├── requirements.txt # Pinned lockfile generated by pip-compile ├── docs/ # Project-specific documentation │ └── architecture.md ├── src/ │ └── project_name/ │ ├── init.py │ ├── main.py # Main application entrypoint │ ├── core/ # Core business logic, models, services │ ├── adapters/ # External clients (DB, APIs, etc.) │ ├── api/ # Web-facing layer (FastAPI/Flask) │ ├── config.py # Pydantic settings module │ └── exceptions.py # Custom application exceptions └── tests/ # Tests mirror the src/ layout ├── init.py ├── conftest.py # Pytest fixtures ├── test_main.py └── core/ └── test_core_logic.py
 
 
-## 9. Dependencies
+---
 
--   **Minimization:** Keep the dependency tree as small as possible.
--   **Vetting:** Before adding a new crate, vet it for maintainability, security, and necessity. Run `cargo audit` regularly.
--   **Updates:** Keep dependencies updated using `cargo update`.
+## 5. Code Organization
 
-## 10. Testing
+* **Imports**: All imports should be **absolute** (e.g., `from project_name.core import models`) for clarity. Relative imports (e.g., `from . import utils`) are only allowed for modules within the *same* parent directory. `ruff` will enforce sorting.
+* **Separation of Concerns**: We must maintain a clear separation between layers.
+    * **`core`**: Contains the pure, domain-agnostic business logic and data models. Should not import from `api` or `adapters`.
+    * **`adapters`**: Contains the "outside world" code: database connections, external API clients, message queue producers.
+    * **`api` / `main`**: The entrypoint (e.g., FastAPI app) that wires everything together. It handles web requests, calls `core` logic, and uses `adapters` to fetch/store data.
 
--   **Unit Tests:** New logic *must* be accompanied by unit tests. Place these in a `#[cfg(test)] mod tests { ... }` block at the bottom of the file they are testing.
--   **Integration Tests:** Place tests that use the *public API* of your library in the `tests/` directory at the repository root. Each file is compiled as a separate crate.
+---
+
+## 6. Dependency Management
+
+* **Source of Truth**: The `[project.dependencies]` section of `pyproject.toml` is the high-level source of truth for abstract dependencies (e.g., `pydantic>=2.0`). For `pip-compile`, these can be listed in `requirements.in`.
+* **Reproducible Builds**: We use `pip-tools` to create pinned lockfiles.
+    * **`pip-compile`**: Generates `requirements.txt` from `requirements.in` (or `pyproject.toml`).
+    * **`requirements.txt`**: This *generated* file is committed to the repository. It contains all direct and transitive dependencies pinned to exact versions, ensuring CI and production builds are reproducible.
+* **Installation**:
+    1.  Create a virtual environment: `python -m venv .venv`
+    2.  Source it: `source .venv/bin/activate`
+    3.  Install dependencies: `pip install -r requirements.txt`
+    4.  Install development dependencies: `pip install -r requirements-dev.txt` (if one exists)
+* **Updating Dependencies**:
+    1.  Edit `requirements.in` (or `pyproject.toml`).
+    2.  Run `pip-compile` to regenerate `requirements.txt`.
+    3.  Run `pip install -r requirements.txt`.
+    4.  Commit the *updated* `requirements.txt` file.
+
+---
+
+## 7. Configuration Management
+
+* **Source**: All configuration **must** be loaded from environment variables.
+* **Tool**: Use `pydantic-settings` to define a `Settings` class (e.g., in `config.py`) that loads and validates environment variables.
+* **No Hardcoding**: **No secrets** (API keys, passwords, tokens) are ever to be hardcoded in the source, committed to Git, or stored in default `.env` files.
+* **Production vs. Development**:
+    * **Development**: It is acceptable to use a `.env` file (listed in `.gitignore`) to load variables for local testing.
+    * **Production**: All environment variables **must** be injected by the CI/CD system or the runtime environment (e.g., Kubernetes Secrets, Docker environment variables).
+
+---
+
+## 8. Error Handling & Exceptions
+
+* **Custom Exceptions**: A project-specific `exceptions.py` module **must** be created.
+* **Base Exception**: This module must define a base exception for the application (e.g., `ProjectNameException(Exception)`).
+* **Specific Exceptions**: All custom, domain-specific errors (e.g., `ValidationError`, `UserNotFoundError`) **must** inherit from this base exception.
+* **`raise` Rule**: **Never** `raise Exception("...")` directly. Always `raise` a specific, custom exception.
+* **`except` Rule**: **Never** catch the base `Exception` class, *except* at the highest level (e.img., an API middleware) to log the error and return a generic 500 response. Always catch the most specific exception possible.
+
+---
+
+## 9. Logging Standards
+
+* **Structured Logging**: All services intended for production **must** log in a structured **JSON** format. This is non-negotiable for observability in tools like Datadog, Splunk, or OpenTelemetry.
+* **Log Context**: Do not log simple strings. Log key events and provide context.
+    * **Good**: `logging.info("User processed order", extra={"user_id": 123, "order_id": "xyz"})`
+    * **Bad**: `logging.info("Processing order...")`
+* **Log Levels**: We will adhere to standard log levels.
+    * **`ERROR`**: A critical, unrecoverable error that requires human intervention.
+    * **`WARNING`**: A recoverable error, unexpected situation, or potential problem (e.g., API retry, missing optional config, deprecation).
+    * **`INFO`**: Key application lifecycle events (e.g., "Service started," "Processed message," "User created").
+    * **`DEBUG`**: Verbose information for debugging only (e.g., "Payload received," "Database query result"). This level must be disabled in production.
+
+---
+
+## 10. Testing Guidelines
+
+* **Framework**: All tests must be written using `pytest`.
+* **Structure**: The `tests/` directory must mirror the `src/project_name/` directory structure.
+* **Fixtures**: Common setup and teardown logic (e.g., database connections, API test clients) **must** be implemented as `pytest.fixture` functions, preferably in `conftest.py` files.
+* **Mocking**:
+    * Use `pytest-mock` (the `mocker` fixture) for all mocking.
+    * **Rule**: Only mock at the **boundaries** of your system. This includes:
+        * External API calls (e.g., `requests.post`)
+        * Database driver calls
+        * System functions (e.g., `datetime.now()`, `time.sleep()`)
+    * **Anti-Pattern**: Do not mock internal functions or classes within our own application. If you feel the need to, it is a sign that the code should be refactored for better testability (e.g., using dependency injection).
+* **Coverage**: We will enforce a minimum test coverage percentage (e.g., **80%**) in the CI pipeline using `pytest-cov`. Pull requests that drop coverage below this threshold will be blocked.
+
+---
 
 ## 11. Documentation
 
-Documentation is mandatory, not optional.
+* **Docstrings**: All new `def` (functions, methods) and `class` definitions **must** have docstrings.
+* **Format**: We will standardize on the **Google docstring format**. It is human-readable and easily parsed by tools like Sphinx. `ruff` can be configured to lint for this.
+* **`README.md` Template**: Every project's `README.md` must contain, at a minimum:
+    1.  A short description of what the project does.
+    2.  **Development Setup**: How to create the virtual environment and install dependencies.
+    3.  **Running the Application**: The exact command(s) to run the service.
+    4.  **Running Tests**: The exact command(s) to run the test suite (e.g., `pytest`).
 
-### 11.1. Code Documentation (rustdoc)
+---
 
-Note that all changelogs must be documented in the `CHANGELOG.md` file. You can use the `cargo-changelog` tool to generate the changelog.  This should also be used to document any changes to the codebase, and for release notes.  We use semantic versioning.
+## 12. CI/CD
 
--   **Public API:** All `pub` items (functions, structs, traits, enums, modules) must have `rustdoc` comments (`///`).
-    -   Explain what the item does.
-    -   Explain why it exists (its purpose).
-    -   Explain any non-obvious parameters or return values.
-    -   Provide at least one `/// # Examples` block.
--   **Internal Comments:** Non-obvious internal logic (`//`) must be commented to explain the why, not the what.
+The Continuous Integration (CI) pipeline (e.g., GitHub Actions) is the guardian of our code quality. Every pull request **must** pass all of the following checks before it can be merged.
 
-### 11.2. Repository Documentation (Docs directory)
+1.  **Lint / Format**:
+    * `ruff check .` (linting)
+    * `ruff format --check .` (replaces `black`)
+2.  **Type Check**:
+    * `mypy src/`
+3.  **Security Audit**:
+    * `bandit -r src/` (static analysis for common vulnerabilities)
+    * `pip-audit` (audits installed dependencies for known vulnerabilities)
+4.  **Test & Coverage**:
+    * `pytest --cov=src/project_name --cov-fail-under=80`
 
--   **Primary location:** The `Docs/` directory is the single source of truth for repository documentation intended for users and contributors.
--   **Format:** All documentation in `Docs/` must be written in Markdown (`.md`).
--   **Backlinks:** Every Markdown file in `Docs/` must include a backlink to the root `README.md` at the top and at the bottom of the file, using a relative link: `[← Back to README](../README.md)`.
--   **Root README as ToC:** The root `README.md` must provide:
-    -   A concise, high-level overview of the project (what it is, why it exists, key features).
-    -   A "Documentation" section that serves as a table of contents linking to the Markdown files under `Docs/`.
--   **Keeping links up-to-date:** When adding, renaming, or removing files in `Docs/`, update the root `README.md` table of contents in the same change.
--   **Suggested organization:**
-    -   `Docs/Architecture.md` — system and component architecture.
-    -   `Docs/Setup.md` — installation, configuration, and quickstart.
-    -   `Docs/Operations.md` — running, monitoring, troubleshooting.
-    -   `Docs/Contributing.md` — contribution guidelines and workflows.
-    -   `Docs/ReleaseNotes.md` — release notes and upgrade guides.
--   **Style:** Prefer clear headings, short paragraphs, and code fences for commands or examples. Use relative links between docs.
--   **Versioning:** If docs differ by version, note the applicable app version at the top of each file.
--   **Ownership:** Each new feature must add or update relevant documents in `Docs/` as part of the same PR.
+* **pre-commit**: It is **strongly** recommended that all developers install and use `pre-commit`. This runs the checks (like `ruff`, `black`, `mypy`) locally *before* a commit is made, saving time and CI-related frustration. A standard `.pre-commit-config.yaml` will be provided in the Appendix.
 
+---
 
-[← Back to README](../README.md)
+## 13. Security
+
+* **Secrets**: Reiterate that **no secrets** (API keys, passwords) are *ever* stored in code, `.env` files, or `pyproject.toml`. They must be loaded from environment variables injected by the CI/CD or runtime environment.
+* **Static Analysis**: `bandit` must be run as part of the CI pipeline to catch common security issues.
+* **Dependency Scanning**: `pip-audit` must be run as part of the CI pipeline. In addition, all repositories must enable GitHub's **Dependabot** alerts to be notified of new vulnerabilities in our dependencies.
+
+---
+
+## 14. Appendix: Tool Configuration
+
+### `pyproject.toml` Configuration
+
+All tool configuration should live in `pyproject.toml` where possible.
+
+```toml
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "project_name"
+version = "0.1.0"
+dependencies = [
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "fastapi>=0.100.0",
+    # ... other dependencies (or use requirements.in)
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "pytest-mock",
+    "mypy",
+    "ruff",
+    "black", # Kept for compatibility, but ruff format is preferred
+    "bandit",
+    "pip-audit",
+    "pip-tools",
+]
+
+# --- Tool Configurations ---
+
+[tool.ruff]
+line-length = 88
+# Use ruff as a drop-in for isort
+[tool.ruff.isort]
+force-single-line = true
+known-first-party = ["project_name"]
+
+[tool.ruff.lint]
+# See all rules here: [https://docs.astral.sh/ruff/rules/](https://docs.astral.sh/ruff/rules/)
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "C",  # flake8-comprehensions
+    "B",  # flake8-bugbear
+]
+ignore = []
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_ignores = true
+strict_optional = true
+check_untyped_defs = true
+ignore_missing_imports = true # Can be set to false for full strictness
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q --cov=src/project_name --cov-report=term-missing"
+testpaths = [
+    "tests",
+]
+
+[tool.coverage.run]
+omit = [
+    "src/project_name/main.py", # Often hard to test startup
+    "src/project_name/config.py", # Just declarations
+]
+
+.pre-commit-config.yaml
+
+A standard pre-commit configuration to enforce checks locally.
+YAML
+
+repos:
+-   repo: [https://github.com/pre-commit/pre-commit-hooks](https://github.com/pre-commit/pre-commit-hooks)
+    rev: v4.5.0
+    hooks:
+    -   id: check-yaml
+    -   id: end-of-file-fixer
+    -   id: trailing-whitespace
+    -   id: check-toml
+
+-   repo: [https://github.com/astral-sh/ruff-pre-commit](https://github.com/astral-sh/ruff-pre-commit)
+    rev: v0.1.6
+    hooks:
+    # Run formatter
+    -   id: ruff-format
+    # Run linter
+    -   id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+
+-   repo: [https://github.com/pre-commit/mirrors-mypy](https://github.com/pre-commit/mirrors-mypy)
+    rev: v1.7.0
+    hooks:
+    -   id: mypy
+        additional_dependencies: ["pydantic"] # Add any stubs-only packages here
+        args: [--config-file, pyproject.toml]
