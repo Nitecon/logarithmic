@@ -19,16 +19,33 @@ git push origin v1.0.0
 
 4. **GitHub Actions will automatically:**
    - Build executables for Linux, macOS, and Windows
-   - Create a GitHub Release
+   - Create a GitHub Release with a formatted description
    - Attach the built binaries to the release
+   - Generate release notes from commits
+   - Make binaries easily downloadable from the Releases page
 
 ### Release Artifacts
 
-The following artifacts are created:
+The following artifacts are created and attached to the GitHub Release:
 
 - **Linux**: `Logarithmic-Linux.tar.gz` - Single executable binary
 - **macOS**: `Logarithmic-macOS.zip` - Application bundle (.app)
 - **Windows**: `Logarithmic-Windows.zip` - Executable (.exe)
+
+### Release Page Format
+
+Each GitHub Release includes:
+
+- **Release Title**: "Logarithmic v1.0.0" (automatically set from tag)
+- **Description**: Formatted markdown with:
+  - Application tagline and overview
+  - Download instructions for each platform
+  - Key features list
+  - Link to full documentation
+- **Auto-Generated Changelog**: List of commits since last release
+- **Binary Attachments**: All three platform builds attached as downloadable assets
+
+Users can easily find and download binaries from: `https://github.com/YOUR_USERNAME/logarithmic/releases`
 
 ## Manual Build (Local Testing)
 
