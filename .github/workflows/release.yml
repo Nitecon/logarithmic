@@ -136,10 +136,6 @@ jobs:
           generate_release_notes: true
           name: Logarithmic ${{ github.ref_name }}
           body: |
-            # 🎉 Logarithmic ${{ github.ref_name }}
-            
-            **The ultimate cross-platform log tailing application with intelligent grouping, syntax highlighting, and session management.**
-            
             ## 📦 Downloads
             
             Choose the version for your platform:
@@ -148,21 +144,8 @@ jobs:
             - **macOS**: Download `Logarithmic-macOS.zip`, extract, and run `Logarithmic.app`
             - **Linux**: Download `Logarithmic-Linux.tar.gz`, extract, and run `./Logarithmic`
             
-            ## ✨ Key Features
-            
-            - 🎯 **Session Management** - Save and restore complete log tracking sessions
-            - 🎨 **Syntax Highlighting** - Automatic colorization of errors, warnings, and verbose logs
-            - 📁 **Smart Grouping** - Organize logs with tabbed or combined views
-            - ⚡ **Live Mode** - Real-time tailing with pause/resume controls
-            - 🔧 **Wildcard Support** - Track log patterns like `app-*.log`
-            - 🪟 **Multi-Window** - Independent windows with smart snapping
-            
             ## 📝 What's Changed
             
             See the full changelog below for all changes in this release.
-            
-            ---
-            
-            **Full Documentation**: [README.md](https://github.com/${{ github.repository }}/blob/main/README.md)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
