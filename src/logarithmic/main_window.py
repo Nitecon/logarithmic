@@ -757,7 +757,8 @@ class MainWindow(QMainWindow):
         Args:
             group_name: Name of the group
         """
-        group_window = LogGroupWindow(group_name)
+        theme_colors = self._settings.get_theme_colors()
+        group_window = LogGroupWindow(group_name, theme_colors=theme_colors)
         group_window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         group_window.destroyed.connect(lambda: self._on_group_window_closed(group_name))
         

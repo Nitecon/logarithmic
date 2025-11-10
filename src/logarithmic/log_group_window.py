@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Callable
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QCloseEvent
 from PySide6.QtGui import QMoveEvent
 from PySide6.QtGui import QResizeEvent
 from PySide6.QtGui import QTextCursor
@@ -22,6 +23,7 @@ from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
 from logarithmic.fonts import get_font_manager
+from logarithmic.log_highlighter import LogHighlighter
 
 logger = logging.getLogger(__name__)
 
@@ -34,16 +36,18 @@ class LogGroupWindow(QWidget):
     - Combined: All logs merged into one view with prefixes
     """
 
-    def __init__(self, group_name: str, parent: QWidget | None = None) -> None:
+    def __init__(self, group_name: str, theme_colors: dict | None = None, parent: QWidget | None = None) -> None:
         """Initialize the log group window.
         
         Args:
             group_name: Name of the log group
+            theme_colors: Theme color settings
             parent: Parent widget
         """
         super().__init__(parent)
         self.group_name = group_name
         self._fonts = get_font_manager()
+        self._theme_colors = theme_colors or {}
         self._position_changed_callback: Callable[[int, int, int, int], None] | None = None
         self._last_saved_position: tuple[int, int, int, int] | None = None
         self._set_default_size_callback: Callable[[int, int], None] | None = None
@@ -209,6 +213,9 @@ class LogGroupWindow(QWidget):
         text_edit.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         text_edit.setFont(self._fonts.get_mono_font(9))
         
+        # Create syntax highlighter
+        highlighter = LogHighlighter(text_edit.document(), self._theme_colors)
+        
         # Connect scroll detection
         scrollbar = text_edit.verticalScrollBar()
         scrollbar.valueChanged.connect(lambda: self._on_tab_scroll_changed(path))
@@ -239,6 +246,7 @@ class LogGroupWindow(QWidget):
             'pause_btn': pause_btn,
             'clear_btn': clear_btn,
             'go_live_btn': go_live_btn,
+            'highlighter': highlighter,
             'is_live': True,
             'is_paused': False
         }
@@ -326,6 +334,9 @@ class LogGroupWindow(QWidget):
         self._combined_widget.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         self._combined_widget.setFont(self._fonts.get_mono_font(9))
         
+        # Create syntax highlighter
+        combined_highlighter = LogHighlighter(self._combined_widget.document(), self._theme_colors)
+        
         # Connect scroll detection
         scrollbar = self._combined_widget.verticalScrollBar()
         scrollbar.valueChanged.connect(self._on_combined_scroll_changed)
@@ -361,6 +372,7 @@ class LogGroupWindow(QWidget):
             'pause_btn': pause_btn,
             'clear_btn': clear_btn,
             'status_bar': status_bar,
+            'highlighter': combined_highlighter,
             'is_live': True,
             'is_paused': False
         }
@@ -856,3 +868,36 @@ class LogGroupWindow(QWidget):
         # Update combined mode status bar
         if self._combined_controls:
             self._combined_controls['status_bar'].setFont(font)
+    
+    def update_theme(self, theme_colors: dict) -> None:
+        """Update theme colors for all highlighters.
+        
+        Args:
+            theme_colors: New theme color dictionary
+        """
+        self._theme_colors = theme_colors
+        
+        # Update tabbed mode highlighters
+        for widgets in self._tab_widgets.values():
+            if 'highlighter' in widgets:
+                widgets['highlighter'].update_theme(theme_colors)
+        
+        # Update combined mode highlighter
+        if self._combined_controls and 'highlighter' in self._combined_controls:
+            self._combined_controls['highlighter'].update_theme(theme_colors)
+    
+    def closeEvent(self, event: QCloseEvent) -> None:
+        """Handle window close event.
+        
+        Args:
+            event: Close event
+        """
+        # Clean up highlighters to prevent crashes
+        for widgets in self._tab_widgets.values():
+            if 'highlighter' in widgets:
+                widgets['highlighter'].setDocument(None)
+        
+        if self._combined_controls and 'highlighter' in self._combined_controls:
+            self._combined_controls['highlighter'].setDocument(None)
+        
+        event.accept()
