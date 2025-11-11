@@ -1,11 +1,15 @@
-# Logarithmic
+<div align="center">
+  <img src="logo-256.png" alt="Logarithmic Logo" width="256">
+  
+  # Logarithmic
 
-[![Python](https://img.shields.io/badge/Python-3.13%2B-blue)](https://www.python.org/)
-[![PySide6](https://img.shields.io/badge/PySide6-6.10.0-green)](https://pypi.org/project/PySide6/)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)]()
+  [![Python](https://img.shields.io/badge/Python-3.13%2B-blue)](https://www.python.org/)
+  [![PySide6](https://img.shields.io/badge/PySide6-6.10.0-green)](https://pypi.org/project/PySide6/)
+  [![License](https://img.shields.io/badge/License-Apache%202.0-blue)](LICENSE)
+  [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)]()
 
-**The ultimate cross-platform log tailing application with intelligent grouping, syntax highlighting, and session management.**
+  **The ultimate cross-platform log tailing application with intelligent grouping, syntax highlighting, and session management.**
+</div>
 
 ![Main Window](images/main_window.png)
 
