@@ -42,13 +42,22 @@ class FileWatcherThread(QThread):
     file_deleted = Signal()
     error_occurred = Signal(str)
     
-    def __init__(self, file_path: Path, log_manager: "LogManager", path_key: str) -> None:
+    def __init__(
+        self,
+        file_path: Path,
+        log_manager: "LogManager",
+        path_key: str,
+        tail_only: bool = False,
+        tail_lines: int = 200
+    ) -> None:
         """Initialize the watcher thread.
         
         Args:
             file_path: Path to the log file to watch
             log_manager: Central log manager for publishing events
             path_key: String key used to register this log with the manager
+            tail_only: If True, only read last N lines instead of entire file
+            tail_lines: Number of lines to read in tail-only mode
         """
         super().__init__()
         self.file_path = file_path.resolve()
@@ -59,6 +68,8 @@ class FileWatcherThread(QThread):
         self._buffer: list[str] = []
         self._file_handle: Optional[object] = None
         self._observer: Optional[Observer] = None
+        self._tail_only = tail_only
+        self._tail_lines = tail_lines
         
     def run(self) -> None:
         """Main thread execution loop."""
@@ -137,10 +148,21 @@ class FileWatcherThread(QThread):
         if not os.access(self.file_path, os.R_OK):
             raise FileAccessError(f"Cannot read file: {self.file_path}")
             
-        # Read entire file first
+        # Read file content based on mode
         try:
             with open(self.file_path, "r", encoding="utf-8", errors="replace") as f:
-                initial_content = f.read()
+                if self._tail_only:
+                    # Tail-only mode: read last N lines
+                    lines = f.readlines()
+                    if len(lines) > self._tail_lines:
+                        lines = lines[-self._tail_lines:]
+                    initial_content = "".join(lines)
+                    logger.info(f"Tail-only mode: read last {len(lines)} lines from {self.file_path}")
+                else:
+                    # Full log mode: read entire file
+                    initial_content = f.read()
+                    logger.info(f"Full log mode: read entire file {self.file_path}")
+                
                 if initial_content:
                     self._log_manager.publish_content(self._path_key, initial_content)
                     if not self._paused:

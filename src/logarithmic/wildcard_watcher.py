@@ -68,13 +68,22 @@ class WildcardFileWatcher(QThread):
     file_switched = Signal(str, str)  # old_path, new_path
     error_occurred = Signal(str)
     
-    def __init__(self, pattern: str, log_manager: "LogManager", path_key: str) -> None:
+    def __init__(
+        self,
+        pattern: str,
+        log_manager: "LogManager",
+        path_key: str,
+        tail_only: bool = False,
+        tail_lines: int = 200
+    ) -> None:
         """Initialize the wildcard watcher.
         
         Args:
             pattern: Glob pattern (e.g., "C:/logs/Cook-*.txt")
             log_manager: Central log manager for publishing events
             path_key: String key used to register this log with the manager
+            tail_only: If True, only read last N lines instead of entire file
+            tail_lines: Number of lines to read in tail-only mode
         """
         super().__init__()
         self._pattern = pattern
@@ -85,6 +94,8 @@ class WildcardFileWatcher(QThread):
         self._current_file: Path | None = None
         self._observer: Observer | None = None
         self._file_handle = None
+        self._tail_only = tail_only
+        self._tail_lines = tail_lines
         
         # Validate pattern
         pattern_path = Path(pattern)
@@ -211,10 +222,21 @@ class WildcardFileWatcher(QThread):
         except (FileNotFoundError, PermissionError, OSError) as e:
             logger.warning(f"Cannot stat file {new_file}: {e}")
         
-        # Read entire file
+        # Read file content based on mode
         try:
             with open(new_file, "r", encoding="utf-8", errors="replace") as f:
-                content = f.read()
+                if self._tail_only:
+                    # Tail-only mode: read last N lines
+                    lines = f.readlines()
+                    if len(lines) > self._tail_lines:
+                        lines = lines[-self._tail_lines:]
+                    content = "".join(lines)
+                    logger.info(f"Tail-only mode: read last {len(lines)} lines from {new_file}")
+                else:
+                    # Full log mode: read entire file
+                    content = f.read()
+                    logger.info(f"Full log mode: read entire file {new_file}")
+                
                 if content:
                     self._log_manager.publish_content(self._path_key, content)
                     if not self._paused:

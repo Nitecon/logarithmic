@@ -32,9 +32,16 @@ from logarithmic.exceptions import FileAccessError
 from logarithmic.exceptions import InvalidPathError
 from logarithmic.file_watcher import FileWatcherThread
 from logarithmic.fonts import get_font_manager
+from logarithmic.k8s_selector_dialog import K8sSelectorDialog
 from logarithmic.log_group_window import LogGroupWindow
 from logarithmic.log_manager import LogManager
 from logarithmic.log_viewer_window import LogViewerWindow
+from logarithmic.providers import FileProvider
+from logarithmic.providers import LogProvider
+from logarithmic.providers import ProviderConfig
+from logarithmic.providers import ProviderMode
+from logarithmic.providers import ProviderRegistry
+from logarithmic.providers import ProviderType
 from logarithmic.settings import Settings
 from logarithmic.wildcard_watcher import WildcardFileWatcher
 
@@ -180,12 +187,19 @@ class MainWindow(QMainWindow):
         # Central log manager
         self._log_manager = LogManager()
         
-        # Track active watchers and viewer windows
-        self._watchers: dict[str, FileWatcherThread] = {}
+        # Provider registry
+        self._provider_registry = ProviderRegistry.get_instance()
+        
+        # Track active watchers/providers and viewer windows
+        self._watchers: dict[str, FileWatcherThread] = {}  # Legacy watchers (for backward compat)
+        self._providers: dict[str, LogProvider] = {}  # New provider-based system
         self._viewer_windows: dict[str, LogViewerWindow] = {}
         self._group_windows: dict[str, LogGroupWindow] = {}  # group_name -> window
         self._log_groups: dict[str, str] = {}  # path_key -> group_name
         self._available_groups: list[str] = []  # List of group names
+        
+        # Track provider configs for session persistence
+        self._provider_configs: dict[str, ProviderConfig] = {}  # path_key -> config
         
         # Track which windows should auto-open after content loads
         self._pending_window_opens: set[str] = set()
@@ -227,6 +241,16 @@ class MainWindow(QMainWindow):
         control_frame = QFrame()
         control_frame.setFrameShape(QFrame.Shape.StyledPanel)
         control_layout = QHBoxLayout(control_frame)
+        
+        # Provider type selector
+        self.provider_combo = QComboBox()
+        self.provider_combo.setFont(self._fonts.get_ui_font(10))
+        self.provider_combo.setMinimumWidth(120)
+        self.provider_combo.setToolTip("Select log source type")
+        self._populate_provider_combo()
+        self.provider_combo.currentIndexChanged.connect(self._on_provider_type_changed)
+        control_layout.addWidget(self.provider_combo)
+        self._ui_elements.append(self.provider_combo)
         
         self.path_input = QLineEdit()
         self.path_input.setPlaceholderText("Enter log file path or wildcard pattern (e.g., C:/logs/*.txt)")
@@ -455,6 +479,42 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(settings_tab, "⚙️ Settings")
         
         layout.addWidget(self.tabs)
+    
+    def _populate_provider_combo(self) -> None:
+        """Populate the provider type combo box."""
+        available_providers = self._provider_registry.get_available_providers()
+        
+        for provider_info in available_providers:
+            icon = provider_info.get("icon", "📄")
+            display_name = provider_info.get("display_name", "Unknown")
+            provider_type = provider_info.get("type", "")
+            
+            # Add item with icon and name, store type as user data
+            self.provider_combo.addItem(f"{icon} {display_name}", provider_type)
+        
+        # Default to File provider
+        for i in range(self.provider_combo.count()):
+            if self.provider_combo.itemData(i) == ProviderType.FILE.value:
+                self.provider_combo.setCurrentIndex(i)
+                break
+    
+    def _on_provider_type_changed(self, index: int) -> None:
+        """Handle provider type selection change.
+        
+        Args:
+            index: Selected index
+        """
+        provider_type = self.provider_combo.currentData()
+        
+        if provider_type == ProviderType.FILE:
+            self.path_input.setPlaceholderText("Enter log file path or wildcard pattern (e.g., C:/logs/*.txt)")
+            self.path_input.setVisible(True)
+        elif provider_type == ProviderType.KUBERNETES:
+            # Hide text input for K8s - we use a dialog instead
+            self.path_input.setVisible(False)
+        else:
+            self.path_input.setPlaceholderText("Enter log source identifier")
+            self.path_input.setVisible(True)
         
     def _add_log_to_list(self, path_key: str, is_wildcard: bool = False) -> None:
         """Add a log file to the list with custom widget.
@@ -475,11 +535,28 @@ class MainWindow(QMainWindow):
         layout = QHBoxLayout(widget)
         layout.setContentsMargins(5, 2, 5, 2)
         
-        # Display name (just filename)
-        if is_wildcard:
-            display_name = f"🔍 {Path(path_key).name}"
+        # Determine provider type and icon
+        provider_icon = "📄"  # Default to file
+        if path_key.startswith("k8s://"):
+            provider_icon = "☸️"
+        elif path_key.startswith("kafka://"):
+            provider_icon = "📨"
+        elif path_key.startswith("pubsub://"):
+            provider_icon = "☁️"
+        
+        # Display name with provider icon
+        if path_key.startswith("k8s://"):
+            # For K8s, show namespace/pod or namespace/app=label
+            display_name = path_key.replace("k8s://", "")
         else:
+            # For files, show just filename
             display_name = Path(path_key).name
+        
+        # Add wildcard indicator if applicable
+        if is_wildcard:
+            display_name = f"{provider_icon} 🔍 {display_name}"
+        else:
+            display_name = f"{provider_icon} {display_name}"
         
         name_label = QLabel(display_name)
         name_label.setFont(self._fonts.get_ui_font(ui_size))
@@ -537,79 +614,37 @@ class MainWindow(QMainWindow):
     
     def _on_add_log(self) -> None:
         """Handle add log button click."""
+        # Get selected provider type
+        provider_type_str = self.provider_combo.currentData()
+        provider_type = ProviderType(provider_type_str)
+        
+        # For Kubernetes, we don't need text input (uses dialog)
+        if provider_type == ProviderType.KUBERNETES:
+            try:
+                self._add_kubernetes_log("")
+            except Exception as e:
+                QMessageBox.critical(
+                    self,
+                    "Unexpected Error",
+                    f"Failed to add log:\n{e}",
+                )
+            return
+        
+        # For other providers, check text input
         path_str = self.path_input.text().strip()
         if not path_str:
             return
         
         try:
-            # Check if pattern contains wildcards
-            is_wildcard = '*' in path_str or '?' in path_str
-            
-            if is_wildcard:
-                # Use pattern as-is for wildcard watching
-                path_key = path_str
-                
-                # Check if already tracking
-                if path_key in self._watchers:
-                    QMessageBox.warning(
-                        self,
-                        "Already Tracking",
-                        f"Already tracking pattern: {path_key}",
-                    )
-                    return
-                
-                # Validate parent directory exists
-                pattern_path = Path(path_str)
-                if not pattern_path.parent.exists():
-                    raise InvalidPathError(f"Parent directory does not exist: {pattern_path.parent}")
-                
-                # Add to list with wildcard indicator
-                self._add_log_to_list(path_key, is_wildcard=True)
-                
-                # Register with log manager
-                self._log_manager.register_log(path_key)
-                
-                # Start wildcard watcher
-                self._start_wildcard_watcher(path_key, path_str)
-                
-                # Save to settings
-                self._settings.add_tracked_log(path_key)
-                logger.info(f"Added wildcard pattern to session: {path_key}")
-                
+            if provider_type == ProviderType.FILE:
+                self._add_file_log(path_str)
             else:
-                # Regular file watching
-                file_path = Path(path_str)
-                path_key = str(file_path)
-                
-                # Check if already tracking
-                if path_key in self._watchers:
-                    QMessageBox.warning(
-                        self,
-                        "Already Tracking",
-                        f"Already tracking: {path_key}",
-                    )
-                    return
-                
-                # Validate path
-                if not file_path.parent.exists():
-                    raise InvalidPathError(f"Parent directory does not exist: {file_path.parent}")
-                    
-                # Check read permissions (if file exists)
-                if file_path.exists() and not os.access(file_path, os.R_OK):
-                    raise FileAccessError(f"Cannot read file: {file_path}")
-                    
-                # Add to list
-                self._add_log_to_list(path_key, is_wildcard=False)
-                
-                # Register with log manager
-                self._log_manager.register_log(path_key)
-                
-                # Start watcher thread
-                self._start_watcher(path_key, file_path)
-                
-                # Save to settings
-                self._settings.add_tracked_log(path_key)
-                logger.info(f"Added log to session: {path_key}")
+                QMessageBox.warning(
+                    self,
+                    "Unsupported Provider",
+                    f"Provider type '{provider_type.value}' is not yet implemented.",
+                )
+                return
             
             # Clear input
             self.path_input.clear()
@@ -624,8 +659,186 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(
                 self,
                 "Unexpected Error",
-                f"Failed to add log file:\n{e}",
+                f"Failed to add log:\n{e}",
             )
+    
+    def _add_file_log(self, path_str: str) -> None:
+        """Add a file-based log source.
+        
+        Args:
+            path_str: File path or wildcard pattern
+        """
+        # Check if pattern contains wildcards
+        is_wildcard = '*' in path_str or '?' in path_str
+        
+        if is_wildcard:
+            # Use pattern as-is for wildcard watching
+            path_key = path_str
+            
+            # Check if already tracking
+            if path_key in self._providers or path_key in self._watchers:
+                QMessageBox.warning(
+                    self,
+                    "Already Tracking",
+                    f"Already tracking pattern: {path_key}",
+                )
+                return
+            
+            # Validate parent directory exists
+            pattern_path = Path(path_str)
+            if not pattern_path.parent.exists():
+                raise InvalidPathError(f"Parent directory does not exist: {pattern_path.parent}")
+            
+            # Create provider config
+            config = FileProvider.create_config(path_str, is_wildcard=True)
+            
+            # Add to list with wildcard indicator
+            self._add_log_to_list(path_key, is_wildcard=True)
+            
+            # Register with log manager
+            self._log_manager.register_log(path_key)
+            
+            # Create and start provider
+            provider = self._provider_registry.create_provider(config, self._log_manager, path_key)
+            provider.error_occurred.connect(lambda err: self._on_watcher_error(path_key, err))
+            provider.start()
+            
+            self._providers[path_key] = provider
+            self._provider_configs[path_key] = config
+            
+            # Save to settings
+            self._settings.add_tracked_log(path_key)
+            logger.info(f"Added wildcard pattern via provider: {path_key}")
+            
+        else:
+            # Regular file watching
+            file_path = Path(path_str)
+            path_key = str(file_path)
+            
+            # Check if already tracking
+            if path_key in self._providers or path_key in self._watchers:
+                QMessageBox.warning(
+                    self,
+                    "Already Tracking",
+                    f"Already tracking: {path_key}",
+                )
+                return
+            
+            # Validate path
+            if not file_path.parent.exists():
+                raise InvalidPathError(f"Parent directory does not exist: {file_path.parent}")
+                
+            # Check read permissions (if file exists)
+            if file_path.exists() and not os.access(file_path, os.R_OK):
+                raise FileAccessError(f"Cannot read file: {file_path}")
+            
+            # Create provider config
+            config = FileProvider.create_config(path_key, is_wildcard=False)
+            
+            # Add to list
+            self._add_log_to_list(path_key, is_wildcard=False)
+            
+            # Register with log manager
+            self._log_manager.register_log(path_key)
+            
+            # Create and start provider
+            provider = self._provider_registry.create_provider(config, self._log_manager, path_key)
+            provider.error_occurred.connect(lambda err: self._on_watcher_error(path_key, err))
+            provider.start()
+            
+            self._providers[path_key] = provider
+            self._provider_configs[path_key] = config
+            
+            # Save to settings
+            self._settings.add_tracked_log(path_key)
+            logger.info(f"Added file log via provider: {path_key}")
+    
+    def _add_kubernetes_log(self, input_str: str) -> None:
+        """Add a Kubernetes pod log source.
+        
+        Args:
+            input_str: Input string (ignored, dialog is used instead)
+        """
+        # Show K8s selector dialog
+        dialog = K8sSelectorDialog(self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        
+        namespace, tracking_mode, identifier, container, app_label = dialog.get_selection()
+        
+        if not identifier:
+            QMessageBox.warning(
+                self,
+                "No Selection",
+                "Please select a pod or app label to track.",
+            )
+            return
+        
+        # Create path key based on tracking mode
+        if tracking_mode == "pod":
+            # Single pod mode
+            if container:
+                path_key = f"k8s://{namespace}/{identifier}/{container}"
+            else:
+                path_key = f"k8s://{namespace}/{identifier}"
+            is_wildcard = False
+        else:
+            # App/deployment mode (wildcard)
+            path_key = f"k8s://{namespace}/app={identifier}"
+            is_wildcard = True
+        
+        # Check if already tracking
+        if path_key in self._providers or path_key in self._watchers:
+            QMessageBox.warning(
+                self,
+                "Already Tracking",
+                f"Already tracking: {path_key}",
+            )
+            return
+        
+        try:
+            # Import K8s provider
+            from logarithmic.providers.kubernetes_provider import KubernetesProvider
+            
+            # Create provider config
+            # App mode always uses TAIL_ONLY, pod mode can use FULL_LOG
+            mode = ProviderMode.TAIL_ONLY if tracking_mode == "app" else ProviderMode.TAIL_ONLY
+            
+            config = KubernetesProvider.create_config(
+                namespace=namespace,
+                pod_name=identifier if tracking_mode == "pod" else f"app={app_label}",
+                container=container,
+                is_deployment=(tracking_mode == "app"),
+                mode=mode
+            )
+            
+            # Add to list
+            self._add_log_to_list(path_key, is_wildcard=is_wildcard)
+            
+            # Register with log manager
+            self._log_manager.register_log(path_key)
+            
+            # Create and start provider
+            provider = self._provider_registry.create_provider(config, self._log_manager, path_key)
+            provider.error_occurred.connect(lambda err: self._on_watcher_error(path_key, err))
+            provider.start()
+            
+            self._providers[path_key] = provider
+            self._provider_configs[path_key] = config
+            
+            # Save to settings
+            self._settings.add_tracked_log(path_key)
+            
+            mode_desc = "app label" if tracking_mode == "app" else "pod"
+            logger.info(f"Added K8s {mode_desc} log: {path_key}")
+            
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Error Adding K8s Log",
+                f"Failed to add Kubernetes log:\n{e}",
+            )
+            logger.error(f"Failed to add K8s log: {e}", exc_info=True)
             
     def _on_refresh_log(self, path_key: str) -> None:
         """Refresh a log file (clear and restart).
@@ -643,8 +856,21 @@ class MainWindow(QMainWindow):
             viewer = self._viewer_windows[path_key]
             viewer.close()
         
-        # Restart the watcher
-        if path_key in self._watchers:
+        # Restart the provider or watcher
+        if path_key in self._providers:
+            # New provider-based system
+            provider = self._providers[path_key]
+            provider.stop()
+            
+            # Recreate provider from config
+            config = self._provider_configs.get(path_key)
+            if config:
+                new_provider = self._provider_registry.create_provider(config, self._log_manager, path_key)
+                new_provider.error_occurred.connect(lambda err: self._on_watcher_error(path_key, err))
+                new_provider.start()
+                self._providers[path_key] = new_provider
+        elif path_key in self._watchers:
+            # Legacy watcher system
             watcher = self._watchers[path_key]
             watcher.stop()
             watcher.wait()  # Wait for thread to finish
@@ -988,8 +1214,14 @@ class MainWindow(QMainWindow):
         """
         logger.info(f"Unregistering log: {path_key}")
         
-        # Stop watcher
-        if path_key in self._watchers:
+        # Stop provider or watcher
+        if path_key in self._providers:
+            provider = self._providers[path_key]
+            provider.stop()
+            del self._providers[path_key]
+            if path_key in self._provider_configs:
+                del self._provider_configs[path_key]
+        elif path_key in self._watchers:
             watcher = self._watchers[path_key]
             watcher.stop()
             watcher.wait()
@@ -1048,8 +1280,13 @@ class MainWindow(QMainWindow):
         viewer.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         viewer.destroyed.connect(lambda: self._on_viewer_window_closed(path_key))
         
-        # Connect watcher pause/resume to content controller pause callback
-        if path_key in self._watchers:
+        # Connect provider/watcher pause/resume to content controller pause callback
+        if path_key in self._providers:
+            provider = self._providers[path_key]
+            viewer.set_pause_callback(
+                lambda paused: provider.pause() if paused else provider.resume()
+            )
+        elif path_key in self._watchers:
             watcher = self._watchers[path_key]
             viewer.set_pause_callback(
                 lambda paused: watcher.pause() if paused else watcher.resume()
@@ -1239,6 +1476,61 @@ class MainWindow(QMainWindow):
         self._settings.set_groups(self._available_groups)
         self._settings.set_log_groups(self._log_groups)
         
+    def _restore_kubernetes_log(self, path_key: str) -> None:
+        """Restore a Kubernetes log from session.
+        
+        Args:
+            path_key: K8s path key (e.g., "k8s://namespace/pod" or "k8s://namespace/app=label")
+        """
+        try:
+            from logarithmic.providers.kubernetes_provider import KubernetesProvider
+            
+            # Parse the path key
+            # Format: k8s://namespace/pod-name or k8s://namespace/pod-name/container
+            # or k8s://namespace/app=label
+            parts = path_key.replace("k8s://", "").split("/")
+            
+            if len(parts) < 2:
+                logger.warning(f"Invalid K8s path key: {path_key}")
+                return
+            
+            namespace = parts[0]
+            pod_or_label = parts[1]
+            container = parts[2] if len(parts) > 2 else None
+            
+            # Determine if it's an app label (wildcard) or single pod
+            is_deployment = pod_or_label.startswith("app=")
+            is_wildcard = is_deployment
+            
+            # Create provider config
+            config = KubernetesProvider.create_config(
+                namespace=namespace,
+                pod_name=pod_or_label,
+                container=container,
+                is_deployment=is_deployment,
+                mode=ProviderMode.TAIL_ONLY
+            )
+            
+            # Add to list
+            self._add_log_to_list(path_key, is_wildcard=is_wildcard)
+            
+            # Register with log manager
+            self._log_manager.register_log(path_key)
+            
+            # Create and start provider
+            provider = self._provider_registry.create_provider(config, self._log_manager, path_key)
+            provider.error_occurred.connect(lambda err: self._on_watcher_error(path_key, err))
+            provider.start()
+            
+            self._providers[path_key] = provider
+            self._provider_configs[path_key] = config
+            
+            mode_desc = "app label" if is_deployment else "pod"
+            logger.info(f"Restored K8s {mode_desc} log: {path_key}")
+            
+        except Exception as e:
+            logger.error(f"Failed to restore K8s log {path_key}: {e}", exc_info=True)
+    
     def _restore_session(self) -> None:
         """Restore tracked logs and groups from previous session."""
         # Restore groups first
@@ -1256,11 +1548,23 @@ class MainWindow(QMainWindow):
         
         for path_str in tracked_logs:
             try:
-                # Check if it's a wildcard pattern
+                # Detect provider type from path_key
+                if path_str.startswith("k8s://"):
+                    # Restore Kubernetes log
+                    self._restore_kubernetes_log(path_str)
+                    continue
+                elif path_str.startswith("kafka://"):
+                    logger.warning(f"Kafka provider not yet implemented, skipping: {path_str}")
+                    continue
+                elif path_str.startswith("pubsub://"):
+                    logger.warning(f"PubSub provider not yet implemented, skipping: {path_str}")
+                    continue
+                
+                # Check if it's a wildcard pattern (for files)
                 is_wildcard = '*' in path_str or '?' in path_str
                 
                 if is_wildcard:
-                    # Restore wildcard pattern
+                    # Restore wildcard pattern using provider
                     pattern_path = Path(path_str)
                     if not pattern_path.parent.exists():
                         logger.warning(f"Skipping pattern (parent dir missing): {path_str}")
@@ -1272,12 +1576,18 @@ class MainWindow(QMainWindow):
                     # Register with log manager
                     self._log_manager.register_log(path_str)
                     
-                    # Start wildcard watcher
-                    self._start_wildcard_watcher(path_str, path_str)
-                    logger.info(f"Restored wildcard pattern: {path_str}")
+                    # Create and start provider
+                    config = FileProvider.create_config(path_str, is_wildcard=True)
+                    provider = self._provider_registry.create_provider(config, self._log_manager, path_str)
+                    provider.error_occurred.connect(lambda err, pk=path_str: self._on_watcher_error(pk, err))
+                    provider.start()
+                    
+                    self._providers[path_str] = provider
+                    self._provider_configs[path_str] = config
+                    logger.info(f"Restored wildcard pattern via provider: {path_str}")
                     
                 else:
-                    # Restore regular file
+                    # Restore regular file using provider
                     file_path = Path(path_str)
                     
                     # Check parent directory exists
@@ -1291,9 +1601,15 @@ class MainWindow(QMainWindow):
                     # Register with log manager
                     self._log_manager.register_log(path_str)
                     
-                    # Start watcher
-                    self._start_watcher(path_str, file_path)
-                    logger.info(f"Restored log: {path_str}")
+                    # Create and start provider
+                    config = FileProvider.create_config(path_str, is_wildcard=False)
+                    provider = self._provider_registry.create_provider(config, self._log_manager, path_str)
+                    provider.error_occurred.connect(lambda err, pk=path_str: self._on_watcher_error(pk, err))
+                    provider.start()
+                    
+                    self._providers[path_str] = provider
+                    self._provider_configs[path_str] = config
+                    logger.info(f"Restored file log via provider: {path_str}")
                 
             except Exception as e:
                 logger.error(f"Failed to restore log {path_str}: {e}")
@@ -1330,7 +1646,9 @@ class MainWindow(QMainWindow):
                 if self._log_groups.get(path_key) == group_name:
                     self._log_manager.unsubscribe(path_key, group_window)
         
-        # Stop all watchers
+        # Stop all providers and watchers
+        for provider in self._providers.values():
+            provider.stop()
         for watcher in self._watchers.values():
             watcher.stop()
             
@@ -1343,10 +1661,14 @@ class MainWindow(QMainWindow):
             group_window.close()
             
         # Unregister all logs from log manager
+        for path_key in list(self._providers.keys()):
+            self._log_manager.unregister_log(path_key)
         for path_key in list(self._watchers.keys()):
             self._log_manager.unregister_log(path_key)
             
         # Clear data structures
+        self._providers.clear()
+        self._provider_configs.clear()
         self._watchers.clear()
         self._viewer_windows.clear()
         self._group_windows.clear()
@@ -1450,7 +1772,7 @@ class MainWindow(QMainWindow):
                 path_key = dialog.wildcard_pattern
                 
                 # Check if already tracking
-                if path_key in self._watchers:
+                if path_key in self._providers or path_key in self._watchers:
                     QMessageBox.information(
                         self,
                         "Already Tracking",
@@ -1463,25 +1785,33 @@ class MainWindow(QMainWindow):
                 if not pattern_path.parent.exists():
                     raise InvalidPathError(f"Parent directory does not exist: {pattern_path.parent}")
                 
+                # Create provider config
+                config = FileProvider.create_config(path_key, is_wildcard=True)
+                
                 # Add to list
                 self._add_log_to_list(path_key, is_wildcard=True)
                 
                 # Register with log manager
                 self._log_manager.register_log(path_key)
                 
-                # Start wildcard watcher
-                self._start_wildcard_watcher(path_key, path_key)
+                # Create and start provider
+                provider = self._provider_registry.create_provider(config, self._log_manager, path_key)
+                provider.error_occurred.connect(lambda err: self._on_watcher_error(path_key, err))
+                provider.start()
+                
+                self._providers[path_key] = provider
+                self._provider_configs[path_key] = config
                 
                 # Save to settings
                 self._settings.add_tracked_log(path_key)
-                logger.info(f"Added wildcard pattern via drag-drop: {path_key}")
+                logger.info(f"Added wildcard pattern via drag-drop (provider): {path_key}")
                 
             else:  # dedicated
                 path_key = dialog.file_path
                 file_path = Path(path_key)
                 
                 # Check if already tracking
-                if path_key in self._watchers:
+                if path_key in self._providers or path_key in self._watchers:
                     QMessageBox.information(
                         self,
                         "Already Tracking",
@@ -1497,18 +1827,26 @@ class MainWindow(QMainWindow):
                 if file_path.exists() and not os.access(file_path, os.R_OK):
                     raise FileAccessError(f"Cannot read file: {file_path}")
                 
+                # Create provider config
+                config = FileProvider.create_config(path_key, is_wildcard=False)
+                
                 # Add to list
                 self._add_log_to_list(path_key, is_wildcard=False)
                 
                 # Register with log manager
                 self._log_manager.register_log(path_key)
                 
-                # Start watcher thread
-                self._start_watcher(path_key, file_path)
+                # Create and start provider
+                provider = self._provider_registry.create_provider(config, self._log_manager, path_key)
+                provider.error_occurred.connect(lambda err: self._on_watcher_error(path_key, err))
+                provider.start()
+                
+                self._providers[path_key] = provider
+                self._provider_configs[path_key] = config
                 
                 # Save to settings
                 self._settings.add_tracked_log(path_key)
-                logger.info(f"Added log via drag-drop: {path_key}")
+                logger.info(f"Added log via drag-drop (provider): {path_key}")
                 
         except (InvalidPathError, FileAccessError) as e:
             QMessageBox.warning(
@@ -1563,7 +1901,12 @@ class MainWindow(QMainWindow):
         Args:
             event: Close event
         """
-        logger.info("Main window closing, stopping all watchers...")
+        logger.info("Main window closing, stopping all providers and watchers...")
+        
+        # Stop all providers
+        for path_key, provider in self._providers.items():
+            logger.debug(f"Stopping provider for: {path_key}")
+            provider.stop()
         
         # Stop all watchers and wait for threads to finish
         for path_key, watcher in self._watchers.items():
