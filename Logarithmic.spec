@@ -46,14 +46,14 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,
+    icon='logo.ico',
 )
 
 # Create macOS app bundle
 app = BUNDLE(
     exe,
     name='Logarithmic.app',
-    icon=None,
+    icon='logo.icns',
     bundle_identifier='com.logarithmic.app',
     info_plist={
         'NSPrincipalClass': 'NSApplication',
