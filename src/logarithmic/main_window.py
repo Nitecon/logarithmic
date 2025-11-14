@@ -5,8 +5,10 @@ import os
 from pathlib import Path
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QCursor
 from PySide6.QtGui import QDragEnterEvent
 from PySide6.QtGui import QDropEvent
+from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import QCheckBox
 from PySide6.QtWidgets import QComboBox
 from PySide6.QtWidgets import QDialog
@@ -1925,6 +1927,59 @@ class MainWindow(QMainWindow):
         for i, window in enumerate(all_windows):
             window.move(offset_x + (i * 30), offset_y + (i * 30))
             window.resize(800, 600)
+
+    def _move_all_windows_to_cursor(self) -> None:
+        """Move all windows (main, viewers, groups) to the mouse cursor location.
+        
+        This is useful when monitor configuration changes (e.g., undocking a laptop)
+        and windows become inaccessible on disconnected monitors.
+        """
+        # Get cursor position
+        cursor_pos = QCursor.pos()
+        cursor_x = cursor_pos.x()
+        cursor_y = cursor_pos.y()
+        
+        logger.info(f"Moving all windows to cursor position: ({cursor_x}, {cursor_y})")
+        
+        # Move main window to cursor
+        self.move(cursor_x, cursor_y)
+        logger.info(f"Moved main window to cursor position")
+        
+        # Offset for stacking windows
+        offset = 30
+        window_count = 1
+        
+        # Move all viewer windows
+        for path_key, viewer in self._viewer_windows.items():
+            new_x = cursor_x + (offset * window_count)
+            new_y = cursor_y + (offset * window_count)
+            viewer.move(new_x, new_y)
+            logger.info(f"Moved viewer window '{path_key}' to ({new_x}, {new_y})")
+            window_count += 1
+        
+        # Move all group windows
+        for group_name, group_window in self._group_windows.items():
+            new_x = cursor_x + (offset * window_count)
+            new_y = cursor_y + (offset * window_count)
+            group_window.move(new_x, new_y)
+            logger.info(f"Moved group window '{group_name}' to ({new_x}, {new_y})")
+            window_count += 1
+        
+        total_windows = window_count
+        logger.info(f"Moved {total_windows} window(s) to cursor location")
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        """Handle key press events.
+        
+        Args:
+            event: Key press event
+        """
+        # F3 - Move all windows to cursor position
+        if event.key() == Qt.Key.Key_F3:
+            self._move_all_windows_to_cursor()
+            event.accept()
+        else:
+            super().keyPressEvent(event)
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         """Handle drag enter event.

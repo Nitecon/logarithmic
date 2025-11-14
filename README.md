@@ -16,6 +16,7 @@
 - **Wildcard Support** - Track log files with patterns like `app-*.log` and automatically switch to newest files
 - **Smart Grouping** - Organize related logs into groups with tabbed or combined views
 - **Window Snapping** - Auto-snap windows together for perfect multi-monitor layouts
+- **F3 Window Recovery** - Press F3 to instantly move all windows to your cursor when monitors disconnect
 
 ### 🎨 **Beautiful & Customizable Interface**
 - **Syntax Highlighting** - Automatic colorization of errors (red), warnings (orange), and verbose logs (gray)
@@ -35,6 +36,7 @@
 - **Combined View** - Merge multiple logs into a single interleaved stream with source labels
 - **Tabbed View** - View multiple logs in tabs with individual controls
 - **Persistent Settings** - All preferences, window positions, and sessions saved automatically
+- **Multi-Monitor Support** - Seamless operation across multiple displays with F3 recovery for undocking
 
 ### 🤖 **AI Integration (NEW!)**
 - **MCP Server** - Built-in Model Context Protocol server for AI agent integration
@@ -42,6 +44,16 @@
 - **Log Metadata** - Add human-readable IDs and descriptions for better AI understanding
 - **Search & Query Tools** - AI agents can list, search, and retrieve log content
 - **Thread-Safe Architecture** - MCP server runs asynchronously without blocking the UI
+
+### 💡 **Lost Your Windows After Undocking?**
+
+If you undock your laptop or disconnect monitors and your log windows are stuck on a disconnected display:
+
+1. **Press F3** on the main window (or any visible window)
+2. All windows instantly move to your mouse cursor location
+3. Redistribute them on your current monitor setup
+
+No need to close and reopen the application or manually hunt for off-screen windows!
 
 ## Quick Links
 
@@ -211,10 +223,25 @@ Customize your experience:
   - Configure port (default: 3000)
 - **Theme Colors**: Customize error, warning, verbose, and default colors (coming soon)
 
+### Window Recovery (F3 Hotkey)
+
+**Problem**: Undocked your laptop or disconnected a monitor? Windows stuck on a disconnected display?
+
+**Solution**: Press **F3** on the main window to instantly relocate all windows to your mouse cursor!
+
+**How it works**:
+1. Move your mouse to where you want your windows
+2. Press **F3** on the main window
+3. All windows (main + log viewers + groups) cascade from your cursor position
+4. Rearrange them as needed on your current monitor setup
+
+This feature is a lifesaver for laptop users who frequently dock/undock or switch between monitor configurations.
+
 ### Keyboard Shortcuts
 
 - **Enter**: Add log file from input box
 - **Double-Click**: Open log viewer or group window
+- **F3**: Move all windows to cursor position (essential for multi-monitor setups!)
 - **Scroll Up**: Exit live mode (shows Go Live button)
 - **Scroll to Bottom**: Re-enter live mode automatically
 
@@ -295,6 +322,7 @@ The `LogManager` implements a publisher-subscriber pattern:
 - **Position Memory**: Window positions saved per log/group
 - **Default Sizing**: Set your preferred default window size
 - **Multi-Monitor**: Works seamlessly across multiple displays
+- **F3 Recovery**: Press F3 to move all windows to cursor when monitors are disconnected
 
 ### Syntax Highlighting
 - **Real-Time**: Applied as logs stream in
