@@ -57,7 +57,10 @@ jobs:
 
       - name: Dependency audit with pip-audit
         run: |
-          pip-audit
+          # Ignore urllib3 SSRF vulnerabilities - they only affect Pyodide runtime (browser/Node.js)
+          # Logarithmic is a desktop application and doesn't use Pyodide
+          # Skip editable packages (logarithmic itself)
+          pip-audit --skip-editable --ignore-vuln GHSA-48p4-8xcf-vxj5 --ignore-vuln GHSA-pq67-6m6q-mj2v
 
   test:
     name: Test on ${{ matrix.os }} with Python ${{ matrix.python-version }}
