@@ -5,7 +5,6 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Callable
-from typing import Optional
 from typing import TextIO
 
 from PySide6.QtCore import QThread

@@ -1,5 +1,4 @@
 """Wildcard File Watcher - handles glob patterns and automatic file switching."""
-"""Wildcard file watcher for monitoring glob patterns."""
 
 import fnmatch
 import glob
