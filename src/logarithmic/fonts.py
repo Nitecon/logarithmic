@@ -1,12 +1,37 @@
 """Font management - loads and provides custom fonts for the application."""
 
 import logging
+import sys
 from pathlib import Path
 
 from PySide6.QtGui import QFont
 from PySide6.QtGui import QFontDatabase
 
 logger = logging.getLogger(__name__)
+
+
+def get_resource_path(relative_path: str) -> Path:
+    """Get absolute path to resource, works for dev and PyInstaller bundles.
+    
+    Args:
+        relative_path: Path relative to project root
+        
+    Returns:
+        Absolute path to resource
+    """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = Path(sys._MEIPASS)  # type: ignore
+        logger.debug(f"Running in PyInstaller bundle, base path: {base_path}")
+    except AttributeError:
+        # Not in a PyInstaller bundle (dev mode)
+        # Go up from src/logarithmic/fonts.py to project root
+        base_path = Path(__file__).parent.parent.parent
+        logger.debug(f"Running in dev mode, base path: {base_path}")
+    
+    resource_path = base_path / relative_path
+    logger.debug(f"Resource path for '{relative_path}': {resource_path}")
+    return resource_path
 
 
 class FontManager:
@@ -32,7 +57,8 @@ class FontManager:
         if self._initialized:
             return
 
-        self._font_dir = Path(__file__).parent.parent.parent / "fonts"
+        # Use resource path helper to find fonts in both dev and bundled modes
+        self._font_dir = get_resource_path("fonts")
         self._michroma_id = None
         self._oxanium_id = None
         self._red_hat_mono_id = None

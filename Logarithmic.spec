@@ -5,12 +5,16 @@ from pathlib import Path
 # Get the project root directory
 project_root = Path(SPECPATH)
 
-# Include font files
+# Include font files - bundle entire fonts directory
 font_dir = project_root / 'fonts'
 font_datas = []
 if font_dir.exists():
+    # Add all font files with their subdirectory structure
     for font_file in font_dir.glob('**/*.ttf'):
-        font_datas.append((str(font_file), 'fonts'))
+        # Preserve directory structure: fonts/Michroma/file.ttf -> fonts/Michroma/
+        relative_path = font_file.relative_to(project_root)
+        dest_dir = str(relative_path.parent)
+        font_datas.append((str(font_file), dest_dir))
 
 a = Analysis(
     ['src/logarithmic/__main__.py'],
@@ -55,9 +59,6 @@ app = BUNDLE(
     name='Logarithmic.app',
     icon='logo.icns',
     bundle_identifier='com.logarithmic.app',
-    info_plist={
-        'NSPrincipalClass': 'NSApplication',
-        'NSHighResolutionCapable': 'True',
-        'LSBackgroundOnly': 'False',
-    },
+    version='1.0.0',
+    info_plist='Info.plist',
 )
