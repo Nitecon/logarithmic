@@ -12,10 +12,10 @@ logger = logging.getLogger(__name__)
 
 def get_resource_path(relative_path: str) -> Path:
     """Get absolute path to resource, works for dev and PyInstaller bundles.
-    
+
     Args:
         relative_path: Path relative to project root
-        
+
     Returns:
         Absolute path to resource
     """
@@ -28,7 +28,7 @@ def get_resource_path(relative_path: str) -> Path:
         # Go up from src/logarithmic/fonts.py to project root
         base_path = Path(__file__).parent.parent.parent
         logger.debug(f"Running in dev mode, base path: {base_path}")
-    
+
     resource_path = base_path / relative_path
     logger.debug(f"Resource path for '{relative_path}': {resource_path}")
     return resource_path
