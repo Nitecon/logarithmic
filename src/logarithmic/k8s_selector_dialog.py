@@ -379,8 +379,8 @@ class K8sSelectorDialog(QDialog):
 
     def _on_browse_kubeconfig(self) -> None:
         """Handle browse kubeconfig button click."""
-        from pathlib import Path
         import os
+        from pathlib import Path
 
         # Check if default kubeconfig exists
         default_kubeconfig = Path.home() / ".kube" / "config"

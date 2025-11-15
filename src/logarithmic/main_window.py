@@ -68,7 +68,7 @@ class TrackingModeDialog(QDialog):
         self.is_folder = is_folder
         self.tracking_mode = "wildcard" if is_folder else "dedicated"  # Default
         self.wildcard_pattern = ""
-        
+
         # Type hints for optional radio buttons (None when is_folder=True)
         self.dedicated_radio: QRadioButton | None = None
         self.wildcard_radio: QRadioButton | None = None
@@ -2486,7 +2486,6 @@ class MainWindow(QMainWindow):
         """
         log_size = font_sizes.get("log_content", 13)
         ui_size = font_sizes.get("ui_elements", 13)
-        status_size = font_sizes.get("status_bar", 13)
 
         # Apply UI element fonts
         for element in self._ui_elements:
