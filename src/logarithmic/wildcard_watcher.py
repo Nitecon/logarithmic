@@ -348,7 +348,9 @@ class WildcardFileWatcher(QThread):
                 logger.debug(f"Created new observer for directory: {directory}")
 
             # Schedule handler on the observer and store the watch
-            self._watch = self._observer.schedule(self._dir_handler, directory, recursive=False)
+            self._watch = self._observer.schedule(
+                self._dir_handler, directory, recursive=False
+            )
             logger.info(f"Watching directory: {directory}")
 
     def _on_new_file_created(self, file_path: str) -> None:
@@ -446,9 +448,9 @@ class WildcardFileWatcher(QThread):
                         observer, ref_count = _DIRECTORY_OBSERVERS[directory]
                         if ref_count <= 1:
                             # Last reference, stop and remove observer
-                            if hasattr(observer, 'is_alive') and observer.is_alive():
+                            if hasattr(observer, "is_alive") and observer.is_alive():
                                 observer.stop()
-                                if hasattr(observer, 'join'):
+                                if hasattr(observer, "join"):
                                     observer.join(timeout=1.0)
                             del _DIRECTORY_OBSERVERS[directory]
                             logger.debug(
