@@ -17,3 +17,4 @@ mcp>=1.21.1
 qasync>=0.28.0
 pydantic>=2.0
 pydantic-settings>=2.0
+pyinstaller>=6.16.0

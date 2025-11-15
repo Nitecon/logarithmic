@@ -2,6 +2,10 @@
 set -e
 # Personal build script - not committed to repo
 
+# --- 0. Get Version from Git Tag ---
+export APP_VERSION=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "1.0.0")
+echo "== Building version: $APP_VERSION =="
+
 # --- 1. Get the APP Certificate ---
 export APP_CERT=$(security find-identity -v -p codesigning | grep "Apple Distribution" | head -n 1 | awk -F'"' '{print $2}')
 if [ -z "$APP_CERT" ]; then

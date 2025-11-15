@@ -7,6 +7,40 @@ from pathlib import Path
 project_root = Path(SPECPATH)
 icon_file = None
 signing_args = {}
+windows_args = {}
+
+# Centralized version and metadata
+# Priority: 1) Environment variable (set by build scripts from git tag)
+#           2) Git tag directly (fallback if env var not set)
+#           3) Default version (if git not available)
+import subprocess
+
+def get_version():
+    # First, check if build script set APP_VERSION env var
+    env_version = os.environ.get('APP_VERSION')
+    if env_version:
+        return env_version
+    
+    # Fallback: Try to get latest git tag directly
+    try:
+        result = subprocess.run(
+            ['git', 'describe', '--tags', '--abbrev=0'],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip().lstrip('v')  # Remove 'v' prefix if present
+    except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+        pass
+    
+    # Final fallback
+    return '1.0.0'
+
+APP_VERSION = get_version()
+print(f"Building Logarithmic version: {APP_VERSION}")
+
 bundle_id = 'com.logarithmic.app' # Your bundle ID
 info_plist_file = 'Info.plist'
 
@@ -19,9 +53,16 @@ if sys.platform == 'darwin':
     }
 elif sys.platform == 'win32':
     icon_file = 'logo.ico'
+    # Windows-specific metadata for version info and UAC
+    windows_args = {
+        'uac_admin': False,  # Set to True if app requires admin privileges
+        'version': APP_VERSION,
+    }
 elif sys.platform.startswith('linux'):
     # Linux uses .png for icons, but not in the PyInstaller build itself.
-    # This is handled by your .desktop file or package (e.g., .deb)
+    # Icon should be specified in your .desktop file (e.g., /usr/share/applications/logarithmic.desktop)
+    # and placed in /usr/share/icons/ or /usr/share/pixmaps/ during package installation.
+    # Example .desktop entry: Icon=/usr/share/pixmaps/logarithmic.png
     icon_file = None
 
 # --- Your Font Logic (This is great, no changes needed) ---
@@ -69,6 +110,7 @@ exe = EXE(
     target_arch=None,
     icon=icon_file,         # <-- Uses our conditional icon
     **signing_args,         # <-- Unpacks Mac signing args, does nothing on other OSes
+    **windows_args,         # <-- Unpacks Windows-specific args (version, UAC), does nothing on other OSes
 )
 
 # --- Output: BUNDLE (Mac) or COLLECT (Windows/Linux) ---
@@ -79,7 +121,7 @@ if sys.platform == 'darwin':
         name='Logarithmic.app',
         icon=icon_file,
         bundle_identifier=bundle_id,
-        version='1.0.0',
+        version=APP_VERSION,
         info_plist=info_plist_file,
         # Note: codesign_identity and entitlements_file are passed
         # from the EXE block automatically.

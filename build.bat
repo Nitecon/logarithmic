@@ -6,6 +6,17 @@ echo Logarithmic Build Script
 echo ========================================
 echo.
 
+REM Get version from git tag
+for /f "delims=" %%i in ('git describe --tags --abbrev=0 2^>nul') do set GIT_TAG=%%i
+if defined GIT_TAG (
+    REM Remove 'v' prefix if present
+    set APP_VERSION=%GIT_TAG:v=%
+) else (
+    set APP_VERSION=1.0.0
+)
+echo Building version: %APP_VERSION%
+echo.
+
 REM Check if .venv exists
 if not exist ".venv\" (
     echo [1/5] Creating virtual environment...
@@ -61,13 +72,7 @@ echo.
 
 REM Build the exe
 echo [5/6] Building executable...
-.venv\Scripts\pyinstaller.exe --name=Logarithmic --onefile --windowed ^
-    --hidden-import=PySide6.QtCore ^
-    --hidden-import=PySide6.QtWidgets ^
-    --hidden-import=PySide6.QtGui ^
-    --hidden-import=watchdog.observers ^
-    --hidden-import=watchdog.events ^
-    src/logarithmic/__main__.py
+.venv\Scripts\pyinstaller.exe Logarithmic.spec
 
 if errorlevel 1 (
     echo ERROR: Failed to build executable
