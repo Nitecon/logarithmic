@@ -110,10 +110,11 @@ if sys.platform == 'darwin':
     }
 elif sys.platform == 'win32':
     icon_file = 'logo.ico'
-    # Windows-specific metadata for version info and UAC
+    # Windows-specific metadata for UAC
     windows_args = {
         'uac_admin': False,  # Set to True if app requires admin privileges
-        'version': APP_VERSION,
+        # Note: 'version' parameter expects a path to a version info file, not a version string
+        # To add version info, create a version file using pyi-grab_version or VSVersionInfo
     }
 elif sys.platform.startswith('linux'):
     icon_file = None

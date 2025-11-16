@@ -75,7 +75,7 @@ jobs:
         shell: bash
         run: |
           pyinstaller Logarithmic.spec
-          echo "BIN=dist/Logarithmic.exe" >> $GITHUB_ENV
+          echo "BIN=dist/Logarithmic" >> $GITHUB_ENV
 
       - name: Package artifact (macOS)
         if: runner.os == 'macOS'
@@ -102,7 +102,7 @@ jobs:
         shell: pwsh
         run: |
           $archive = "dist/Logarithmic-Windows.zip"
-          Compress-Archive -Path dist/Logarithmic.exe -DestinationPath $archive -Force
+          Compress-Archive -Path dist/Logarithmic -DestinationPath $archive -Force
           echo "ARCHIVE=$archive" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Archive artifact
@@ -140,9 +140,9 @@ jobs:
             
             Choose the version for your platform:
             
-            - **Windows**: Download `Logarithmic-Windows.zip`, extract, and run `Logarithmic.exe`
+            - **Windows**: Download `Logarithmic-Windows.zip`, extract the `Logarithmic` folder, and run `Logarithmic.exe` inside it
             - **macOS**: Download `Logarithmic-macOS.zip`, extract, and run `Logarithmic.app`
-            - **Linux**: Download `Logarithmic-Linux.tar.gz`, extract, and run `./Logarithmic`
+            - **Linux**: Download `Logarithmic-Linux.tar.gz`, extract the `Logarithmic` folder, and run `./Logarithmic` inside it
             
             ## 📝 What's Changed
             
